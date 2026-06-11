@@ -49,6 +49,9 @@ jobs:
   generate-report:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ${{ github.workspace }}
 
     steps:
       - name: Checkout
@@ -63,7 +66,11 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install --upgrade pip && pip install -r requirements.txt
+        run: |
+          pip install --upgrade pip wheel
+          # ScraperFC pulls in GUI libs that can't build headless; install core stack only
+          pip install soccerdata mplsoccer matplotlib pandas pyarrow requests numpy scipy Pillow seaborn unidecode tqdm
+          pip install seleniumbase mycdp wrapper-tls-requests --no-deps || true
 
       - name: Install fonts & headless display
         run: |
