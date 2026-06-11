@@ -194,7 +194,7 @@ def compose_thread(
     match: dict,
     viz_paths: list[Path],
     output_dir: Path,
-    handle: str = "@WC26Analytics",
+    handle: str = "@anup4khandelwal",
 ) -> Path:
     """
     Write a numbered tweet thread to output_dir/<match_key>/thread.md.
