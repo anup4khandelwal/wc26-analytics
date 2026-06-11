@@ -1,6 +1,20 @@
 name: Match Report
 
+# ── triggers ──────────────────────────────────────────────────────────────────
+#
+# Scheduled: fires ~2 hours after each WC 2026 kick-off window (UTC).
+#   Typical ET kick-offs: 12:00 / 15:00 / 18:00 / 21:00 ET
+#   = 16:00 / 19:00 / 22:00 / 01:00 UTC  → check at 18:30 / 21:30 / 00:30 / 03:30 UTC
+#
+# Manual:    workflow_dispatch lets you target a specific match or re-run one.
+#
 on:
+  schedule:
+    - cron: '30 18 * * *'   # 18:30 UTC  (~2h after 12:00 ET kick-offs)
+    - cron: '30 21 * * *'   # 21:30 UTC  (~2h after 15:00 ET kick-offs)
+    - cron: '30  0 * * *'   # 00:30 UTC  (~2h after 18:00 ET kick-offs)
+    - cron: '30  3 * * *'   # 03:30 UTC  (~2h after 21:00 ET kick-offs)
+
   workflow_dispatch:
     inputs:
       home_team:
@@ -34,7 +48,7 @@ permissions:
 jobs:
   generate-report:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -51,65 +65,59 @@ jobs:
       - name: Install dependencies
         run: pip install --upgrade pip && pip install -r requirements.txt
 
-      # matplotlib needs a display even in headless mode
       - name: Install fonts & headless display
         run: |
           sudo apt-get update -q
           sudo apt-get install -y -q fonts-liberation xvfb
 
-      - name: Build match report
+      # ── scheduled run: auto-discover today's completed matches ────────────────
+      - name: Auto-process today's matches (scheduled)
+        if: github.event_name == 'schedule'
+        run: xvfb-run --auto-servernum python scripts/run_today.py
+
+      # ── manual run: process a specific match ──────────────────────────────────
+      - name: Process specific match (manual)
+        if: github.event_name == 'workflow_dispatch'
         env:
           HOME_TEAM: ${{ inputs.home_team }}
           AWAY_TEAM: ${{ inputs.away_team }}
-          FBREF_ID: ${{ inputs.fbref_match_id }}
-          CHARTS: ${{ inputs.charts }}
-          PLAYER: ${{ inputs.player }}
-          HANDLE: ${{ inputs.twitter_handle }}
+          FBREF_ID:  ${{ inputs.fbref_match_id }}
+          CHARTS:    ${{ inputs.charts }}
+          PLAYER:    ${{ inputs.player }}
+          HANDLE:    ${{ inputs.twitter_handle }}
         run: |
           ARGS=()
-
-          if [[ -n "$FBREF_ID" ]]; then
-            ARGS+=(--fbref-id "$FBREF_ID")
-          fi
-          if [[ -n "$HOME_TEAM" ]]; then
-            ARGS+=(--home "$HOME_TEAM")
-          fi
-          if [[ -n "$AWAY_TEAM" ]]; then
-            ARGS+=(--away "$AWAY_TEAM")
-          fi
-          if [[ -n "$CHARTS" ]]; then
-            ARGS+=(--charts "$CHARTS")
-          fi
-          if [[ -n "$PLAYER" ]]; then
-            ARGS+=(--player "$PLAYER")
-          fi
-          if [[ -n "$HANDLE" ]]; then
-            ARGS+=(--handle "$HANDLE")
-          fi
-
-          # Run under Xvfb so matplotlib can render without a real display
+          [[ -n "$FBREF_ID"   ]] && ARGS+=(--fbref-id "$FBREF_ID")
+          [[ -n "$HOME_TEAM"  ]] && ARGS+=(--home "$HOME_TEAM")
+          [[ -n "$AWAY_TEAM"  ]] && ARGS+=(--away "$AWAY_TEAM")
+          [[ -n "$CHARTS"     ]] && ARGS+=(--charts "$CHARTS")
+          [[ -n "$PLAYER"     ]] && ARGS+=(--player "$PLAYER")
+          [[ -n "$HANDLE"     ]] && ARGS+=(--handle "$HANDLE")
           xvfb-run --auto-servernum python scripts/run_match.py "${ARGS[@]}"
 
+      # ── commit whatever landed in output/ ─────────────────────────────────────
       - name: Commit & push output
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-
           git add output/
           if git diff --cached --quiet; then
             echo "Nothing new to commit."
           else
-            MATCH_LABEL="${{ inputs.home_team }} vs ${{ inputs.away_team }}"
-            if [[ -n "${{ inputs.fbref_match_id }}" && -z "${{ inputs.home_team }}" ]]; then
-              MATCH_LABEL="match ${{ inputs.fbref_match_id }}"
+            if [[ "${{ github.event_name }}" == "schedule" ]]; then
+              LABEL="scheduled run $(date -u +%Y-%m-%d)"
+            else
+              LABEL="${{ inputs.home_team }} vs ${{ inputs.away_team }}"
+              [[ -z "${{ inputs.home_team }}" ]] && LABEL="match ${{ inputs.fbref_match_id }}"
             fi
-            git commit -m "feat: match report — ${MATCH_LABEL}"
+            git commit -m "feat: match report — ${LABEL}"
             git push origin HEAD
           fi
 
-      - name: Upload artifacts (for quick inspection)
+      - name: Upload artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: match-report
+          name: match-report-${{ github.run_id }}
           path: output/
           retention-days: 7
