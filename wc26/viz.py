@@ -195,7 +195,7 @@ def _lineup_positions(lineups: Optional[pd.DataFrame], team: str) -> pd.DataFram
 
 # ── 1. shot map ───────────────────────────────────────────────────────────────
 
-def shot_map(match: dict, output_dir: Path, handle: str = "@WC26Analytics") -> Path:
+def shot_map(match: dict, output_dir: Path, handle: str = "@anup4khandelwal") -> Path:
     """
     Two attacking half-pitches side by side.
     Dots sized by xG; gold stars for goals.
@@ -293,7 +293,7 @@ def shot_map(match: dict, output_dir: Path, handle: str = "@WC26Analytics") -> P
 
 # ── 2. xG race ────────────────────────────────────────────────────────────────
 
-def xg_race(match: dict, output_dir: Path, handle: str = "@WC26Analytics") -> Path:
+def xg_race(match: dict, output_dir: Path, handle: str = "@anup4khandelwal") -> Path:
     """Cumulative xG step chart with goal markers."""
     shots_raw = match.get("shots")
     home, away = _team_names(match)
@@ -501,7 +501,7 @@ def player_pizza(
     match: dict,
     output_dir: Path,
     season_stats: Optional[pd.DataFrame] = None,
-    handle: str = "@WC26Analytics",
+    handle: str = "@anup4khandelwal",
 ) -> Path:
     """Percentile pizza chart vs all WC 2026 players in the same position."""
     player_stats = match.get("player_stats")
@@ -589,7 +589,7 @@ def pass_network(
     team: str,
     match: dict,
     output_dir: Path,
-    handle: str = "@WC26Analytics",
+    handle: str = "@anup4khandelwal",
 ) -> Path:
     """
     Approximate pass network using formation positions and per-player passing
@@ -697,7 +697,7 @@ def defensive_actions(
     player_name: str,
     match: dict,
     output_dir: Path,
-    handle: str = "@WC26Analytics",
+    handle: str = "@anup4khandelwal",
 ) -> Path:
     """
     Defensive action summary for a player, displayed as a stacked bar chart

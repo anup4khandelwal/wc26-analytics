@@ -26,7 +26,7 @@ on:
       twitter_handle:
         description: "Twitter handle for branding footer"
         required: false
-        default: "@WC26Analytics"
+        default: "@anup4khandelwal"
 
 permissions:
   contents: write

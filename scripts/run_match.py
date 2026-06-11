@@ -57,7 +57,7 @@ def _parse_args() -> argparse.Namespace:
     )
     p.add_argument("--player", default=None,
                    help="Player name (required for pizza / defensive charts)")
-    p.add_argument("--handle", default="@WC26Analytics",
+    p.add_argument("--handle", default="@anup4khandelwal",
                    help="Twitter handle for branding footer")
     p.add_argument("--output-dir", default="output", dest="output_dir",
                    help="Root output directory (default: output)")

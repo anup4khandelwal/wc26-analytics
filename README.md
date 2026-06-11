@@ -43,7 +43,7 @@ Trigger **Actions → Match Report → Run workflow** and fill in:
 | `fbref_match_id` | FBref hash — overrides team names if set |
 | `charts` | `shot_map,xg_race,pass_network` (default) or `all` |
 | `player` | Required only for `pizza` / `defensive` charts |
-| `twitter_handle` | Your handle, e.g. `@WC26Analytics` |
+| `twitter_handle` | Your handle, e.g. `@anup4khandelwal` |
 
 The workflow commits generated files back to the repo automatically.
 
