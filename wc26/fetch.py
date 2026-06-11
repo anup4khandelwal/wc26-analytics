@@ -96,9 +96,9 @@ def _fbref_instance(season: int = 2026):
     return sd.FBref(leagues=_FBREF_LEAGUE, seasons=season)
 
 
-def _fbref_schedule(season: int = 2026) -> pd.DataFrame:
+def _fbref_schedule(season: int = 2026, force_refresh: bool = False) -> pd.DataFrame:
     key = f"fbref_schedule_{season}"
-    if (df := _load(key)) is not None:
+    if not force_refresh and (df := _load(key)) is not None:
         return df
 
     _sleep()
