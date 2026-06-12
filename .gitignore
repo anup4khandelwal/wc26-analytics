@@ -10,3 +10,4 @@ dist/
 build/
 *.egg-info/
 .pytest_cache/
+downloaded_files/
