@@ -80,14 +80,19 @@ jobs:
           sudo apt-get update -q
           sudo apt-get install -y -q fonts-liberation xvfb
 
-      # ── scheduled run: auto-discover today's completed matches ────────────────
-      - name: Auto-process today's matches (scheduled)
-        if: github.event_name == 'schedule'
+      # ── auto mode: scheduled, or manual dispatch with no match specified ──────
+      - name: Auto-process today's matches
+        if: >-
+          github.event_name == 'schedule' ||
+          (github.event_name == 'workflow_dispatch' &&
+           inputs.home_team == '' && inputs.fbref_match_id == '')
         run: xvfb-run --auto-servernum python scripts/run_today.py
 
       # ── manual run: process a specific match ──────────────────────────────────
       - name: Process specific match (manual)
-        if: github.event_name == 'workflow_dispatch'
+        if: >-
+          github.event_name == 'workflow_dispatch' &&
+          (inputs.home_team != '' || inputs.fbref_match_id != '')
         env:
           HOME_TEAM: ${{ inputs.home_team }}
           AWAY_TEAM: ${{ inputs.away_team }}
