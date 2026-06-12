@@ -25,12 +25,10 @@ OUTPUT_DIR = Path("output")
 HANDLE = "@anup4khandelwal"
 SEASON = 2026
 
-# Kick-off slots run until ~23:00 ET = 03:00 UTC next day, so we also
-# check yesterday's date to catch overnight finishers.
-def _check_dates() -> set[str]:
-    today = date.today()
-    yesterday = today - timedelta(days=1)
-    return {str(today), str(yesterday)}
+# A match is considered "completed" this long after kick-off.
+COMPLETION_BUFFER = timedelta(hours=2, minutes=30)
+# Only look back this far so early-tournament runs don't reprocess everything.
+LOOKBACK = timedelta(hours=36)
 
 
 def _already_done(home: str, away: str) -> bool:
@@ -38,59 +36,70 @@ def _already_done(home: str, away: str) -> bool:
     return (OUTPUT_DIR / match_key / "thread.md").exists()
 
 
+def _parse_kickoff(date_str: str, time_str: str | None) -> datetime | None:
+    """
+    Parse openfootball date + time into an aware UTC datetime.
+    Time looks like '13:00 UTC-6' or '18:00 UTC+2' (or may be missing).
+    """
+    try:
+        d = datetime.strptime(str(date_str)[:10], "%Y-%m-%d")
+    except ValueError:
+        return None
+
+    if not time_str:
+        # no kickoff time — treat as 12:00 UTC so date-only entries still work
+        return d.replace(hour=12, tzinfo=timezone.utc)
+
+    parts = str(time_str).split()
+    try:
+        hh, mm = parts[0].split(":")
+        offset_hours = 0.0
+        if len(parts) > 1 and parts[1].upper().startswith("UTC"):
+            off = parts[1][3:]
+            if off:
+                offset_hours = float(off)
+        local = d.replace(hour=int(hh), minute=int(mm))
+        return (local - timedelta(hours=offset_hours)).replace(tzinfo=timezone.utc)
+    except (ValueError, IndexError):
+        return d.replace(hour=12, tzinfo=timezone.utc)
+
+
 def _find_completed_matches(season: int = SEASON) -> list[dict]:
     """
-    Pull the FBref schedule (cache-busted so scores are fresh) and return
-    matches that:
-      - fall on today or yesterday (UTC)
-      - have a non-null score (i.e. the match is finished)
-      - don't already have output
+    Discover matches from the openfootball fixture list (plain JSON — no
+    scraping) whose kick-off was more than COMPLETION_BUFFER ago and less
+    than LOOKBACK ago, and that don't already have output.
+
+    Match data itself still comes from FBref via fetch_match_report().
     """
-    from wc26.fetch import _fbref_schedule  # noqa: PLC0415
+    from wc26.fetch import fetch_fixtures  # noqa: PLC0415
 
-    logger.info("Fetching latest FBref schedule (force-refresh)…")
-    schedule = _fbref_schedule(season, force_refresh=True)
+    logger.info("Fetching openfootball fixtures (force-refresh)…")
+    fixtures = fetch_fixtures(force_refresh=True)
 
-    # normalise column names
-    col = lambda candidates: next(  # noqa: E731
-        (c for c in candidates if c in schedule.columns), None
-    )
-    date_c = col(["date", "game_date"])
-    home_c = col(["home_team", "home"])
-    away_c = col(["away_team", "away"])
-    id_c = col(["game_id", "match_id", "id"])
-    hscore_c = col(["home_score", "score_home", "score1"])
-    ascore_c = col(["away_score", "score_away", "score2"])
-
-    if date_c is None or home_c is None or away_c is None:
-        logger.error(
-            "Unexpected FBref schedule columns: %s", list(schedule.columns)
-        )
-        sys.exit(1)
-
-    check_dates = _check_dates()
-    logger.info("Checking for completed matches on: %s", check_dates)
-
+    now = datetime.now(timezone.utc)
     matches = []
-    for _, row in schedule.iterrows():
-        row_date = str(row[date_c])[:10]
-        if row_date not in check_dates:
+    for _, row in fixtures.iterrows():
+        home, away = row.get("team1"), row.get("team2")
+        if not home or not away:
+            continue  # TBD knockout slot
+
+        kickoff = _parse_kickoff(row.get("date"), row.get("time"))
+        if kickoff is None:
             continue
 
-        # require at least home score to confirm match is finished
-        if hscore_c and (row[hscore_c] is None or str(row[hscore_c]) in ("", "nan", "None")):
-            logger.debug("No score yet for %s vs %s — skipping", row[home_c], row[away_c])
+        finished_at = kickoff + COMPLETION_BUFFER
+        if not (now - LOOKBACK <= finished_at <= now):
             continue
 
-        home = str(row[home_c])
-        away = str(row[away_c])
-        fbref_id = str(row[id_c]) if id_c else None
-
+        home, away = str(home), str(away)
         if _already_done(home, away):
             logger.info("Already processed: %s vs %s", home, away)
             continue
 
-        matches.append({"home": home, "away": away, "fbref_id": fbref_id})
+        logger.info("Completed match found: %s vs %s (KO %s UTC)",
+                    home, away, kickoff.strftime("%Y-%m-%d %H:%M"))
+        matches.append({"home": home, "away": away, "fbref_id": None})
 
     return matches
 
