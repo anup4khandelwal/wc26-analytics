@@ -23,11 +23,11 @@ CACHE_DIR = Path("cache")
 DELAY = 3.0
 
 OPENFOOTBALL_URL = (
-    "https://raw.githubusercontent.com/openfootball/world-cup/master/2026/worldcup.json"
+    "https://raw.githubusercontent.com/openfootball/worldcup.json/master/2026/worldcup.json"
 )
 
 # FBref league label used by soccerdata
-_FBREF_LEAGUE = "FIFA World Cup"
+_FBREF_LEAGUE = "INT-World Cup"
 
 
 # ── cache helpers ─────────────────────────────────────────────────────────────
@@ -52,10 +52,27 @@ def _sleep() -> None:
 
 # ── openfootball fixtures ─────────────────────────────────────────────────────
 
-def fetch_fixtures() -> pd.DataFrame:
+def _flatten_matches(data: dict) -> list[dict]:
+    """openfootball uses either a flat 'matches' list or nested 'rounds'."""
+    if "matches" in data:
+        return [(m.get("round"), m) for m in data["matches"]]
+    out = []
+    for rnd in data.get("rounds", []):
+        for m in rnd.get("matches", []):
+            out.append((rnd.get("name"), m))
+    return out
+
+
+def _team_name(value) -> Optional[str]:
+    if isinstance(value, dict):
+        return value.get("name")
+    return value
+
+
+def fetch_fixtures(force_refresh: bool = False) -> pd.DataFrame:
     """WC 2026 fixtures from openfootball (cached)."""
     key = "fixtures_wc26"
-    if (df := _load(key)) is not None:
+    if not force_refresh and (df := _load(key)) is not None:
         return df
 
     _sleep()
@@ -64,24 +81,24 @@ def fetch_fixtures() -> pd.DataFrame:
     data = resp.json()
 
     rows = []
-    for rnd in data.get("rounds", []):
-        for m in rnd.get("matches", []):
-            t1 = m.get("team1", {})
-            t2 = m.get("team2", {})
-            rows.append({
-                "round": rnd.get("name"),
-                "date": m.get("date"),
-                "time": m.get("time"),
-                "team1": t1.get("name") if isinstance(t1, dict) else t1,
-                "team2": t2.get("name") if isinstance(t2, dict) else t2,
-                "score1": m.get("score1"),
-                "score2": m.get("score2"),
-                "group": (
-                    m.get("group", {}).get("name")
-                    if isinstance(m.get("group"), dict)
-                    else m.get("group")
-                ),
-            })
+    for round_name, m in _flatten_matches(data):
+        score = m.get("score") or {}
+        ft = score.get("ft") if isinstance(score, dict) else None
+        rows.append({
+            "round": round_name,
+            "date": m.get("date"),
+            "time": m.get("time"),
+            "team1": _team_name(m.get("team1")),
+            "team2": _team_name(m.get("team2")),
+            "score1": (ft[0] if ft else m.get("score1")),
+            "score2": (ft[1] if ft else m.get("score2")),
+            "group": (
+                m.get("group", {}).get("name")
+                if isinstance(m.get("group"), dict)
+                else m.get("group")
+            ),
+            "ground": m.get("ground"),
+        })
 
     df = pd.DataFrame(rows)
     _save(df, key)
