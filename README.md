@@ -16,6 +16,15 @@ Each run produces files under `output/<Home>_vs_<Away>/`:
 | `def_actions_<Player>.png` | Defensive action bar chart + pitch zone |
 | `thread.md` | Numbered tweets (≤280 chars each) ready to post |
 
+## Website
+
+All match reports are published automatically to GitHub Pages:
+
+**https://anup4khandelwal.github.io/wc26-analytics/**
+
+The `Deploy Site` workflow rebuilds the page after every match run
+(`scripts/build_site.py` — stdlib only, no extra dependencies).
+
 ## Quick start
 
 ```bash
