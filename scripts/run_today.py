@@ -105,7 +105,13 @@ def _find_completed_matches(season: int = SEASON) -> list[dict]:
 
 
 def _run_match(home: str, away: str, fbref_id: str | None) -> bool:
-    """Fetch + visualise + compose for one match.  Returns True on success."""
+    """
+    Fetch + visualise + compose for one match.
+
+    Returns True on success, False on a hard error, or None when no data
+    source has the match yet (a clean skip — retried on the next run since
+    no thread.md is written).
+    """
     from wc26.fetch import fetch_match_report
     from wc26 import viz
     from wc26.compose import compose_thread
@@ -117,6 +123,14 @@ def _run_match(home: str, away: str, fbref_id: str | None) -> bool:
     except Exception as exc:
         logger.error("fetch_match_report failed: %s", exc)
         return False
+
+    shots = match.get("shots")
+    if shots is None or shots.empty:
+        logger.info(
+            "  No shot data available from any source yet — skipping, "
+            "will retry on the next scheduled run."
+        )
+        return None
 
     sc = match["meta"]["score"]
     logger.info("  Score: %s %s–%s %s", home, sc["home"], sc["away"], away)
@@ -159,15 +173,20 @@ def main() -> None:
         return
 
     logger.info("Found %d match(es) to process.", len(matches))
-    success, failed = 0, 0
+    success, failed, waiting = 0, 0, 0
     for m in matches:
         ok = _run_match(m["home"], m["away"], m["fbref_id"])
-        if ok:
+        if ok is True:
             success += 1
+        elif ok is None:
+            waiting += 1
         else:
             failed += 1
 
-    logger.info("Finished: %d succeeded, %d failed.", success, failed)
+    logger.info(
+        "Finished: %d succeeded, %d waiting for data, %d failed.",
+        success, waiting, failed,
+    )
     if failed:
         sys.exit(1)  # non-zero so the Actions step is marked red
 

@@ -51,7 +51,8 @@ The workflow commits generated files back to the repo automatically.
 
 | Source | Used for |
 |---|---|
-| [FBref](https://fbref.com) via [soccerdata](https://github.com/probberechts/soccerdata) | Shots + xG, player stats, lineups |
+| [FBref](https://fbref.com) via [soccerdata](https://github.com/probberechts/soccerdata) | Shots + xG, player stats, lineups (primary — works from residential IPs) |
+| [StatsBomb open data](https://github.com/statsbomb/open-data) | Automatic fallback — raw GitHub JSON works from GitHub Actions runners. Activates when StatsBomb publishes WC26 (they published WC22 free during the tournament) |
 | [Sofascore](https://sofascore.com) via [ScraperFC](https://github.com/eddwebster/ScraperFC) | Shot coords / player ratings fallback |
 | [openfootball](https://github.com/openfootball/world-cup) | Fixture list + scores |
 
