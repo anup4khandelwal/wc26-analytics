@@ -346,34 +346,59 @@ def fetch_match_report(
         lineups      – DataFrame of lineups (may be None)
         sofascore    – dict with optional "shots" / "ratings" DFs
     """
-    if fbref_id is None:
-        if not (home and away):
-            raise ValueError("Supply fbref_id OR both home and away team names")
-        fbref_id = _find_game_id(home, away, season)
+    if fbref_id is None and not (home and away):
+        raise ValueError("Supply fbref_id OR both home and away team names")
+
+    shots = player_stats = lineups = None
+    score: Optional[dict] = None
+
+    # ── primary: FBref (blocked from datacenter IPs — failure is expected
+    #    on GitHub Actions, so anything raised here falls through) ────────────
+    try:
         if fbref_id is None:
-            raise LookupError(
-                f"No FBref match found for '{home}' vs '{away}' in {season}. "
-                "Check spelling or supply fbref_id directly."
-            )
-        logger.info("Resolved FBref game_id: %s", fbref_id)
+            fbref_id = _find_game_id(home, away, season)
+            if fbref_id:
+                logger.info("Resolved FBref game_id: %s", fbref_id)
+        if fbref_id:
+            shots = _fetch_shots(fbref_id, season)
+            player_stats = _fetch_player_stats(fbref_id, season)
+            lineups = _fetch_lineups(fbref_id, season)
+    except Exception as exc:
+        logger.warning("FBref unavailable (%s) — trying fallback sources", exc)
 
-    shots = _fetch_shots(fbref_id, season)
-    player_stats = _fetch_player_stats(fbref_id, season)
-    lineups = _fetch_lineups(fbref_id, season)
+    # ── fallback: StatsBomb open data (raw GitHub JSON, never IP-blocked) ────
+    if (shots is None or shots.empty) and home and away:
+        try:
+            from wc26 import statsbomb  # noqa: PLC0415 — statsbomb imports from this module
 
+            sb = statsbomb.fetch_match(home, away)
+            if sb is not None:
+                logger.info("Using StatsBomb open data")
+                shots = sb["shots"]
+                if lineups is None or lineups.empty:
+                    lineups = sb["lineups"]
+                if player_stats is None or player_stats.empty:
+                    player_stats = sb["player_stats"]
+                score = sb["score"]
+        except Exception as exc:
+            logger.warning("StatsBomb fallback failed: %s", exc)
+
+    # ── fallback: Sofascore via ScraperFC ────────────────────────────────────
     sofascore: dict = {}
-    has_coords = (
-        shots is not None
-        and not shots.empty
-        and bool({"x", "y", "start_x", "location_x"} & set(shots.columns))
-    )
-    if not has_coords and home and away:
-        logger.info("Shot coordinates missing from FBref — trying Sofascore fallback")
+    if (shots is None or shots.empty) and home and away:
+        logger.info("Trying Sofascore fallback")
         sofascore = _sofascore_fallback(home, away)
-        if "shots" in sofascore and (shots is None or shots.empty):
+        if "shots" in sofascore:
             shots = sofascore["shots"]
 
-    score = _extract_score(shots, home, away, fbref_id, season)
+    if score is None:
+        if shots is not None and not shots.empty:
+            try:
+                score = _extract_score(shots, home, away, fbref_id or "", season)
+            except Exception:
+                score = {"home": 0, "away": 0}
+        else:
+            score = {"home": 0, "away": 0}
 
     return {
         "meta": {
