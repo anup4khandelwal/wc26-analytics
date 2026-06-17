@@ -171,9 +171,9 @@ def _pos_to_xy(pos: str) -> tuple[float, float]:
 def _lineup_positions(lineups: Optional[pd.DataFrame], team: str) -> pd.DataFrame:
     """Return DataFrame with columns player, pos, x, y for a team.
 
-    Handles both detailed FBref positions (e.g. LCB, RDM) and the coarser
-    FIFA PDF positions (GK / DF / MF / FW) by spreading each group evenly
-    across the y-axis in a sensible formation shape.
+    Assigns formation-aware (x, y) coordinates in opta space (0-100 × 0-100)
+    so the network looks like a real formation rather than rigid vertical columns.
+    Attack direction is left → right (x=0 GK goal, x=100 opponent goal).
     """
     if lineups is None or lineups.empty:
         return pd.DataFrame(columns=["player", "pos", "x", "y"])
@@ -191,36 +191,68 @@ def _lineup_positions(lineups: Optional[pd.DataFrame], team: str) -> pd.DataFram
     if df.empty:
         return pd.DataFrame(columns=["player", "pos", "x", "y"])
 
-    # x-axis (depth): GK=5, DF=22, MF=50, FW=80
-    _BROAD_X = {"GK": 5, "DF": 22, "MF": 50, "FW": 80}
-
     def _broad(pos: str) -> str:
         p = str(pos).upper().strip()
-        if p == "GK":
-            return "GK"
-        if p in ("DF", "RB", "LB", "CB", "RCB", "LCB", "RWB", "LWB"):
-            return "DF"
+        if p == "GK": return "GK"
+        if p in ("DF", "RB", "LB", "CB", "RCB", "LCB", "RWB", "LWB"): return "DF"
         if p in ("MF", "CM", "CDM", "CAM", "RM", "LM", "RDM", "LDM",
-                 "RCM", "LCM", "RAM", "LAM"):
-            return "MF"
+                 "RCM", "LCM", "RAM", "LAM"): return "MF"
         return "FW"
 
-    # Group players by broad position
+    # Formation-aware (x, y) templates for each group size.
+    # y is lateral position (15=right flank, 85=left flank, 50=centre).
+    # x is depth (5=GK, 22=defensive line, 50=midfield, 78=attacking line).
+    _TEMPLATES: dict[str, dict[int, list[tuple[float, float]]]] = {
+        "GK": {1: [(5, 50)]},
+        "DF": {
+            2: [(23, 33), (23, 67)],
+            3: [(23, 22), (22, 50), (23, 78)],
+            4: [(24, 17), (21, 39), (21, 61), (24, 83)],
+            5: [(28, 10), (24, 28), (21, 50), (24, 72), (28, 90)],
+        },
+        "MF": {
+            1: [(50, 50)],
+            2: [(45, 33), (45, 67)],
+            3: [(42, 50), (55, 25), (55, 75)],       # DM + 2 wide
+            4: [(40, 35), (40, 65), (57, 22), (57, 78)],
+            5: [(42, 50), (50, 28), (50, 72), (62, 20), (62, 80)],
+            6: [(40, 30), (40, 70), (52, 15), (52, 50), (52, 85), (62, 50)],
+        },
+        "FW": {
+            1: [(80, 50)],
+            2: [(78, 28), (78, 72)],
+            3: [(75, 17), (82, 50), (75, 83)],
+            4: [(73, 15), (80, 38), (80, 62), (73, 85)],
+        },
+    }
+
     groups: dict[str, list[str]] = {"GK": [], "DF": [], "MF": [], "FW": []}
     for _, row in df.iterrows():
         pos = str(row[pos_c]).upper().strip() if pos_c else "MF"
-        grp = _broad(pos)
-        groups[grp].append(str(row[name_c]))
+        groups[_broad(pos)].append(str(row[name_c]))
 
     rows: list[dict] = []
     for grp, players in groups.items():
         n = len(players)
         if n == 0:
             continue
-        x_val = _BROAD_X[grp]
-        # Spread evenly on y-axis with a margin (15–85)
-        ys = np.linspace(15, 85, n) if n > 1 else [50.0]
-        for player, y_val in zip(players, ys):
+        templates = _TEMPLATES.get(grp, {})
+        # Find closest template size; fall back to evenly spread
+        coords = templates.get(n)
+        if coords is None:
+            best = min(templates.keys(), key=lambda k: abs(k - n)) if templates else None
+            if best:
+                base = templates[best]
+                # interpolate y positions to fit n players
+                base_y = [c[1] for c in base]
+                ys = np.linspace(min(base_y), max(base_y), n)
+                x_avg = np.mean([c[0] for c in base])
+                coords = [(x_avg, float(y)) for y in ys]
+            else:
+                x_avg = {"GK": 5, "DF": 22, "MF": 50, "FW": 78}.get(grp, 50)
+                coords = [(x_avg, float(y)) for y in np.linspace(15, 85, n)]
+
+        for player, (x_val, y_val) in zip(players, coords):
             rows.append({"player": player, "pos": grp, "x": float(x_val), "y": float(y_val)})
 
     return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["player", "pos", "x", "y"])
