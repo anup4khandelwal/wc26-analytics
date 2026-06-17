@@ -1,12 +1,19 @@
 """
 Fetch and cache FIFA WC 2026 match data.
 
-Primary:  soccerdata / FBref — lineups, player stats, shots + xG
-Fallback: ScraperFC / Sofascore — shot coords, player ratings
+Source priority (each falls through to the next on failure):
+  1. FIFA PMSR PDF   — official PDF from FIFA Training Centre; works on
+                       GitHub Actions (no IP block); has score, lineups,
+                       team xG, shot log (no per-shot x/y/xG)
+  2. FBref           — full shot events + xG; blocked on GitHub Actions
+                       cloud IPs but works locally
+  3. StatsBomb       — open data; activates when they publish WC26
+  4. Sofascore       — blocked from cloud IPs; last resort
+
 Schedule: openfootball worldcup.json (GitHub raw)
 
-All raw pulls are cached as Parquet.  Every network call is preceded by a
-3-second sleep to be polite to upstream servers.
+All raw pulls are cached as Parquet / JSON.  Every network call is
+preceded by a 3-second sleep to be polite to upstream servers.
 """
 
 import logging
@@ -351,47 +358,89 @@ def fetch_match_report(
 
     shots = player_stats = lineups = None
     score: Optional[dict] = None
+    team_stats: dict = {}
 
-    # ── primary: FBref (blocked from datacenter IPs — failure is expected
-    #    on GitHub Actions, so anything raised here falls through) ────────────
+    # ── source 1: FIFA PMSR PDF — always works from cloud runners ────────────
+    if home and away:
+        try:
+            from wc26 import fifa_pdf  # noqa: PLC0415
+
+            logger.info("Trying FIFA PMSR PDF for %s vs %s", home, away)
+            pdf_data = fifa_pdf.fetch_match(home, away)
+            if pdf_data is not None:
+                logger.info("FIFA PDF data loaded")
+                score = pdf_data["score"]
+                team_stats = pdf_data.get("team_stats", {})
+                if lineups is None or (isinstance(lineups, pd.DataFrame) and lineups.empty):
+                    lineups = pdf_data.get("lineups")
+                # shots from PDF have no x/y/xg — store separately; don't
+                # block other sources from providing richer shot data
+                if pdf_data.get("shots") is not None and not pdf_data["shots"].empty:
+                    shots = pdf_data["shots"]  # may be overwritten below with richer data
+        except Exception as exc:
+            logger.warning("FIFA PDF source failed: %s", exc)
+
+    # ── source 2: FBref (blocked on GitHub Actions; works locally) ───────────
     try:
-        if fbref_id is None:
+        if fbref_id is None and home and away:
             fbref_id = _find_game_id(home, away, season)
             if fbref_id:
                 logger.info("Resolved FBref game_id: %s", fbref_id)
         if fbref_id:
-            shots = _fetch_shots(fbref_id, season)
-            player_stats = _fetch_player_stats(fbref_id, season)
-            lineups = _fetch_lineups(fbref_id, season)
+            fbref_shots = _fetch_shots(fbref_id, season)
+            if fbref_shots is not None and not fbref_shots.empty:
+                shots = fbref_shots  # richer: has x/y/xg
+            fbref_stats = _fetch_player_stats(fbref_id, season)
+            if fbref_stats is not None and not fbref_stats.empty:
+                player_stats = fbref_stats
+            fbref_lineups = _fetch_lineups(fbref_id, season)
+            if fbref_lineups is not None and not fbref_lineups.empty:
+                lineups = fbref_lineups
     except Exception as exc:
-        logger.warning("FBref unavailable (%s) — trying fallback sources", exc)
+        logger.warning("FBref unavailable (%s)", exc)
 
-    # ── fallback: StatsBomb open data (raw GitHub JSON, never IP-blocked) ────
-    if (shots is None or shots.empty) and home and away:
-        try:
-            from wc26 import statsbomb  # noqa: PLC0415 — statsbomb imports from this module
+    # ── source 3: StatsBomb open data (activates when WC26 published) ────────
+    if home and away:
+        _has_xg = (
+            shots is not None
+            and not shots.empty
+            and "xg" in shots.columns
+            and shots["xg"].notna().any()
+        )
+        if not _has_xg:
+            try:
+                from wc26 import statsbomb  # noqa: PLC0415
 
-            sb = statsbomb.fetch_match(home, away)
-            if sb is not None:
-                logger.info("Using StatsBomb open data")
-                shots = sb["shots"]
-                if lineups is None or lineups.empty:
-                    lineups = sb["lineups"]
-                if player_stats is None or player_stats.empty:
-                    player_stats = sb["player_stats"]
-                score = sb["score"]
-        except Exception as exc:
-            logger.warning("StatsBomb fallback failed: %s", exc)
+                sb = statsbomb.fetch_match(home, away)
+                if sb is not None:
+                    logger.info("Using StatsBomb open data")
+                    if sb["shots"] is not None and not sb["shots"].empty:
+                        shots = sb["shots"]
+                    if lineups is None or (isinstance(lineups, pd.DataFrame) and lineups.empty):
+                        lineups = sb["lineups"]
+                    if player_stats is None or (isinstance(player_stats, pd.DataFrame) and player_stats.empty):
+                        player_stats = sb["player_stats"]
+                    if score is None or score == {"home": 0, "away": 0}:
+                        score = sb["score"]
+            except Exception as exc:
+                logger.warning("StatsBomb fallback failed: %s", exc)
 
-    # ── fallback: Sofascore via ScraperFC ────────────────────────────────────
+    # ── source 4: Sofascore (last resort; also blocked on cloud) ─────────────
     sofascore: dict = {}
-    if (shots is None or shots.empty) and home and away:
+    _has_xg2 = (
+        shots is not None
+        and not shots.empty
+        and "xg" in shots.columns
+        and shots["xg"].notna().any()
+    )
+    if not _has_xg2 and home and away:
         logger.info("Trying Sofascore fallback")
         sofascore = _sofascore_fallback(home, away)
         if "shots" in sofascore:
             shots = sofascore["shots"]
 
-    if score is None:
+    # ── finalise score ────────────────────────────────────────────────────────
+    if score is None or score == {"home": 0, "away": 0}:
         if shots is not None and not shots.empty:
             try:
                 score = _extract_score(shots, home, away, fbref_id or "", season)
@@ -407,6 +456,7 @@ def fetch_match_report(
             "fbref_id": fbref_id,
             "season": season,
             "score": score,
+            "team_stats": team_stats,
         },
         "shots": shots,
         "player_stats": player_stats,

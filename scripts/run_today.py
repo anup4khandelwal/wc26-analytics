@@ -124,15 +124,16 @@ def _run_match(home: str, away: str, fbref_id: str | None) -> bool:
         logger.error("fetch_match_report failed: %s", exc)
         return False
 
+    sc = match["meta"]["score"]
     shots = match.get("shots")
-    if shots is None or shots.empty:
+    has_shots = shots is not None and not shots.empty
+    # FIFA PDF always provides a real score; 0–0 with no shots means no data yet
+    if not (sc.get("home", 0) or sc.get("away", 0) or has_shots):
         logger.info(
-            "  No shot data available from any source yet — skipping, "
-            "will retry on the next scheduled run."
+            "  No data from any source yet — will retry on next scheduled run."
         )
         return None
 
-    sc = match["meta"]["score"]
     logger.info("  Score: %s %s–%s %s", home, sc["home"], sc["away"], away)
 
     viz_paths: list[Path] = []

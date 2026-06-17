@@ -72,7 +72,7 @@ jobs:
         run: |
           pip install --upgrade pip wheel
           # ScraperFC pulls in GUI libs that can't build headless; install core stack only
-          pip install soccerdata mplsoccer matplotlib pandas pyarrow requests numpy scipy Pillow seaborn unidecode tqdm
+          pip install soccerdata mplsoccer matplotlib pandas pyarrow requests numpy scipy Pillow seaborn unidecode tqdm pymupdf
           pip install seleniumbase mycdp wrapper-tls-requests --no-deps || true
 
       - name: Install fonts & headless display

@@ -213,37 +213,66 @@ def compose_thread(
     shots_raw = match.get("shots")
     player_stats = match.get("player_stats")
 
-    h_xg = a_xg = 0.0
+    # Team xG — prefer per-shot aggregate, fall back to FIFA PDF team totals
+    team_stats = meta.get("team_stats", {})
+    h_xg = team_stats.get("xg_home", 0.0)
+    a_xg = team_stats.get("xg_away", 0.0)
+    h_shots_n = team_stats.get("shots_home", 0)
+    a_shots_n = team_stats.get("shots_away", 0)
+
     shots_norm: Optional[pd.DataFrame] = None
     if shots_raw is not None and not shots_raw.empty:
         shots_norm = _norm_shots(shots_raw)
-        h_shots = shots_norm[shots_norm["_team"].str.lower().str.contains(home.lower(), na=False)]
-        a_shots = shots_norm[shots_norm["_team"].str.lower().str.contains(away.lower(), na=False)]
-        h_xg = h_shots["_xg"].sum()
-        a_xg = a_shots["_xg"].sum()
+        h_mask = shots_norm["_team"].str.lower().str.contains(home.lower(), na=False)
+        a_mask = shots_norm["_team"].str.lower().str.contains(away.lower(), na=False)
+        h_shots = shots_norm[h_mask]
+        a_shots = shots_norm[a_mask]
+        # Only override team_stats xG when per-shot xG is actually available
+        _h_xg_sum = h_shots["_xg"].sum()
+        _a_xg_sum = a_shots["_xg"].sum()
+        if _h_xg_sum > 0 or _a_xg_sum > 0:
+            h_xg, a_xg = _h_xg_sum, _a_xg_sum
+        if h_shots_n == 0:
+            h_shots_n = len(h_shots)
+        if a_shots_n == 0:
+            a_shots_n = len(a_shots)
+    else:
+        h_shots = a_shots = pd.DataFrame()
 
     tweets: list[str] = []
 
     # 1 — scoreline
     xg_winner = home if h_xg >= a_xg else away
     xg_gap = abs(h_xg - a_xg)
-    tweet1 = _cap(
-        f"🏆 FINAL | {home} {sc['home']}–{sc['away']} {away}\n\n"
+    xg_line = (
         f"xG: {home} {h_xg:.2f} – {a_xg:.2f} {away}\n"
         f"{'Dominant' if xg_gap > 0.5 else 'Narrow'} xG edge: {xg_winner}\n\n"
+        if (h_xg or a_xg) else ""
+    )
+    tweet1 = _cap(
+        f"🏆 FINAL | {home} {sc['home']}–{sc['away']} {away}\n\n"
+        f"{xg_line}"
         f"Full thread 🧵👇"
     )
     tweets.append(tweet1)
 
-    # 2 — xG summary
-    h_shots_n = len(h_shots) if shots_norm is not None else 0
-    a_shots_n = len(a_shots) if shots_norm is not None else 0
-    tweet2 = _cap(
-        f"📊 xG breakdown\n"
-        f"{home}: {h_xg:.2f} xG from {h_shots_n} shots\n"
-        f"{away}: {a_xg:.2f} xG from {a_shots_n} shots\n\n"
-        f"{'Both teams created chances but quality was key.'  if abs(h_xg - a_xg) < 0.4 else f'{xg_winner} were clearly the better side on the numbers.'}"
-    )
+    # 2 — xG / shot summary
+    if h_xg or a_xg:
+        tweet2 = _cap(
+            f"📊 xG breakdown\n"
+            f"{home}: {h_xg:.2f} xG from {h_shots_n} shots\n"
+            f"{away}: {a_xg:.2f} xG from {a_shots_n} shots\n\n"
+            f"{'Both teams created chances but quality was key.' if abs(h_xg - a_xg) < 0.4 else f'{xg_winner} were clearly the better side on the numbers.'}"
+        )
+    else:
+        poss_h = team_stats.get("possession_home", "—")
+        poss_a = team_stats.get("possession_away", "—")
+        tweet2 = _cap(
+            f"📊 Match stats\n"
+            f"Possession: {home} {poss_h}%  vs  {away} {poss_a}%\n"
+            f"Shots: {home} {h_shots_n}  vs  {away} {a_shots_n}\n"
+            f"Passes: {team_stats.get('passes_home','—')} vs {team_stats.get('passes_away','—')}"
+        )
     tweets.append(tweet2)
 
     # 3–4 — auto-picked insights

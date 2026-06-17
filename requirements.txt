@@ -1,4 +1,5 @@
 soccerdata>=1.8.0
+pymupdf>=1.24.0
 # ScraperFC is optional (Sofascore fallback) — its GUI transitive deps fail
 # to build on headless machines. Install manually if you want the fallback:
 #   pip install ScraperFC
