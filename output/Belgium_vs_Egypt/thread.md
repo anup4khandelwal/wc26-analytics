@@ -47,9 +47,9 @@ Both teams created chances but quality was key.
 Graphics attached 📸
 [shot_map.png]  [xg_race.png]  [pass_network_Belgium.png]  [pass_network_Egypt.png]
 
-Data: FBref / Opta  ·  @anup4khandelwal
+Data: FIFA PMSR / Sofascore  ·  @anup4khandelwal
 #FIFAWorldCup2026 #WC26 #Belgium #Egypt
 
-*184 / 280 chars*
+*193 / 280 chars*
 
 ---

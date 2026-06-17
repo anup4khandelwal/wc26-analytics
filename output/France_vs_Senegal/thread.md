@@ -55,9 +55,9 @@ France were clearly the better side on the numbers.
 Graphics attached 📸
 [shot_map.png]  [xg_race.png]  [pass_network_France.png]  [pass_network_Senegal.png]
 
-Data: FBref / Opta  ·  @anup4khandelwal
+Data: FIFA PMSR / Sofascore  ·  @anup4khandelwal
 #FIFAWorldCup2026 #WC26 #France #Senegal
 
-*186 / 280 chars*
+*195 / 280 chars*
 
 ---

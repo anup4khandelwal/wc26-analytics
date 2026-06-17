@@ -55,9 +55,9 @@ Both teams created chances but quality was key.
 Graphics attached 📸
 [shot_map.png]  [xg_race.png]  [pass_network_Iran.png]  [pass_network_New_Zealand.png]
 
-Data: FBref / Opta  ·  @anup4khandelwal
+Data: FIFA PMSR / Sofascore  ·  @anup4khandelwal
 #FIFAWorldCup2026 #WC26 #Iran #NewZealand
 
-*189 / 280 chars*
+*198 / 280 chars*
 
 ---

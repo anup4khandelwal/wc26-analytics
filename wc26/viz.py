@@ -289,8 +289,8 @@ def _shot_outcomes_chart(
         ax.set_facecolor(BG)
         for sp in ax.spines.values():
             sp.set_visible(False)
-        ax.tick_params(colors=TEXT, labelsize=T_LABEL)
-        ax.yaxis.set_visible(False)
+        ax.tick_params(axis='x', colors=TEXT, labelsize=T_LABEL)
+        ax.tick_params(axis='y', length=0, labelsize=T_LABEL, labelcolor=TEXT)
 
         bars = [counts[c] for c in CATEGORIES]
         bar_colors = [CAT_COLORS[c] for c in CATEGORIES]
@@ -314,6 +314,16 @@ def _shot_outcomes_chart(
         subtitle = f"{goals}g  ·  {total} shots  ·  xG {xg:.2f}"
         ax.set_title(team, color=color, fontsize=T_LABEL + 4, fontweight="bold", pad=8)
         ax.set_xlabel(subtitle, color=MUTED, fontsize=T_TICK)
+
+    # colour legend at the bottom
+    legend_handles = [
+        mpatches.Patch(color=CAT_COLORS[c], label=c) for c in CATEGORIES
+    ]
+    fig.legend(
+        handles=legend_handles, loc="lower center", ncol=len(CATEGORIES),
+        facecolor=BG, edgecolor=GRID_C, labelcolor=TEXT,
+        fontsize=T_TICK, bbox_to_anchor=(0.5, 0.01),
+    )
 
     title = f"{home}  {sc['home']}–{sc['away']}  {away}  —  Shots"
     fig.suptitle(title, color=TEXT, fontsize=T_TITLE, fontweight="bold", y=0.95)
@@ -743,7 +753,9 @@ def pass_network(
 
     pos_df = _lineup_positions(lineups, team)
 
-    # enrich with passing volumes
+    # enrich with passing volumes — FBref preferred, position-based fallback
+    # Typical WC game estimates by position (creates meaningful size variation)
+    _POS_PASS_DEFAULT = {"GK": 28, "DF": 52, "MF": 68, "FW": 38}
     pass_vol: dict[str, float] = {}
     if player_stats is not None and not player_stats.empty:
         pass_stats = player_stats[player_stats.get("stat_type", pd.Series([])) == "passing"] \
@@ -759,6 +771,13 @@ def pass_network(
                 vol = pd.to_numeric(row[att_c], errors="coerce")
                 if not pd.isna(vol):
                     pass_vol[nm] = float(vol)
+
+    # Apply position-based fallback for players without FBref data
+    if not pos_df.empty:
+        for _, row in pos_df.iterrows():
+            nm = str(row["player"])
+            if nm not in pass_vol:
+                pass_vol[nm] = float(_POS_PASS_DEFAULT.get(str(row.get("pos", "MF")), 45))
 
     pitch = Pitch(
         pitch_type="opta",
@@ -779,15 +798,34 @@ def pass_network(
         positions = pos_df[["x", "y"]].values
         n = len(positions)
         edge_drawn: set = set()
-        for i in range(n):
-            for j in range(i + 1, n):
-                dist = np.linalg.norm(positions[i] - positions[j])
-                if dist < 28:  # neighbour threshold in opta space
-                    if (i, j) not in edge_drawn:
+        # Connect each player to their 3 nearest neighbours (always forms a network)
+        from scipy.spatial import cKDTree  # noqa: PLC0415
+        try:
+            tree = cKDTree(positions)
+            k = min(4, n)  # 3 neighbours + self
+            dists, idxs = tree.query(positions, k=k)
+            for i in range(n):
+                for jj in range(1, k):
+                    j = idxs[i][jj]
+                    pair = (min(i, j), max(i, j))
+                    if pair not in edge_drawn and dists[i][jj] < 50:
+                        w = max(0.5, 2.5 - dists[i][jj] / 20)
                         ax.plot(
                             [positions[i][0], positions[j][0]],
                             [positions[i][1], positions[j][1]],
-                            color=color, alpha=0.25, linewidth=1.5, zorder=3,
+                            color=color, alpha=0.22, linewidth=w, zorder=3,
+                        )
+                        edge_drawn.add(pair)
+        except ImportError:
+            # fallback to distance threshold if scipy unavailable
+            for i in range(n):
+                for j in range(i + 1, n):
+                    dist = np.linalg.norm(positions[i] - positions[j])
+                    if dist < 38:
+                        ax.plot(
+                            [positions[i][0], positions[j][0]],
+                            [positions[i][1], positions[j][1]],
+                            color=color, alpha=0.22, linewidth=1.5, zorder=3,
                         )
                         edge_drawn.add((i, j))
 

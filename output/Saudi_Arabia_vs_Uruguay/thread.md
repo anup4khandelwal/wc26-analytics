@@ -55,9 +55,9 @@ Uruguay were clearly the better side on the numbers.
 Graphics attached 📸
 [shot_map.png]  [xg_race.png]  [pass_network_Saudi_Arabia.png]  [pass_network_Uruguay.png]
 
-Data: FBref / Opta  ·  @anup4khandelwal
+Data: FIFA PMSR / Sofascore  ·  @anup4khandelwal
 #FIFAWorldCup2026 #WC26 #SaudiArabia #Uruguay
 
-*197 / 280 chars*
+*206 / 280 chars*
 
 ---
