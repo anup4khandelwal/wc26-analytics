@@ -12,3 +12,4 @@ build/
 .pytest_cache/
 downloaded_files/
 site/
+.claude/
