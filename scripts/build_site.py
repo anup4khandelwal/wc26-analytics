@@ -15,6 +15,7 @@ from __future__ import annotations
 import html
 import re
 import shutil
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -55,16 +56,6 @@ header a { color: var(--home); text-decoration: none; }
 .imgs a { display: block; }
 .imgs img { width: 100%; border-radius: 8px; border: 1px solid var(--border); display: block; }
 @media (max-width: 720px) { .imgs { grid-template-columns: 1fr; } }
-details { margin-top: 16px; }
-summary {
-  cursor: pointer; color: var(--home); font-weight: 600;
-  padding: 8px 0; user-select: none;
-}
-.thread {
-  white-space: pre-wrap; background: var(--bg); border: 1px solid var(--border);
-  border-radius: 8px; padding: 16px; font-size: 0.92rem; color: var(--text);
-  overflow-x: auto;
-}
 .toc { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 .toc a {
   background: var(--card); border: 1px solid var(--border); color: var(--text);
@@ -145,17 +136,14 @@ def _match_section(m: dict) -> str:
         parts.append('<div class="imgs">')
         for img in m["images"]:
             rel = f'output/{m["slug"]}/{img.name}'
+            ts = int(img.stat().st_mtime)
             parts.append(
-                f'<a href="{rel}" target="_blank">'
-                f'<img src="{rel}" alt="{html.escape(img.stem)}" loading="lazy"></a>'
+                f'<a href="{rel}?v={ts}" target="_blank">'
+                f'<img src="{rel}?v={ts}" alt="{html.escape(img.stem)}" loading="lazy"></a>'
             )
         parts.append("</div>")
 
-    if m["thread"]:
-        parts.append(
-            "<details><summary>📝 Tweet thread</summary>"
-            f'<div class="thread">{html.escape(m["thread"])}</div></details>'
-        )
+    # Tweet thread hidden per user preference
 
     parts.append("</section>")
     return "\n".join(parts)
@@ -187,6 +175,7 @@ def build() -> Path:
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
 <title>World Cup 2026 Analytics</title>
 <style>{CSS}</style>
 </head>
