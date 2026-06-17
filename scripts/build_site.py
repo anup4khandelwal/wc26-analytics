@@ -56,6 +56,16 @@ header a { color: var(--home); text-decoration: none; }
 .imgs a { display: block; }
 .imgs img { width: 100%; border-radius: 8px; border: 1px solid var(--border); display: block; }
 @media (max-width: 720px) { .imgs { grid-template-columns: 1fr; } }
+details { margin-top: 16px; }
+summary {
+  cursor: pointer; color: var(--home); font-weight: 600;
+  padding: 8px 0; user-select: none;
+}
+.thread {
+  white-space: pre-wrap; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 16px; font-size: 0.92rem; color: var(--text);
+  overflow-x: auto;
+}
 .toc { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 .toc a {
   background: var(--card); border: 1px solid var(--border); color: var(--text);
@@ -143,7 +153,11 @@ def _match_section(m: dict) -> str:
             )
         parts.append("</div>")
 
-    # Tweet thread hidden per user preference
+    if m["thread"]:
+        parts.append(
+            "<details><summary>📝 Tweet thread</summary>"
+            f'<div class="thread">{html.escape(m["thread"])}</div></details>'
+        )
 
     parts.append("</section>")
     return "\n".join(parts)
