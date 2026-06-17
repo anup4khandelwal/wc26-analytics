@@ -308,7 +308,7 @@ def compose_thread(
     images_note = "  ".join(f"[{n}]" for n in png_names) if png_names else ""
     tweet_n = _cap(
         f"Graphics attached 📸\n{images_note}\n\n"
-        f"Data: FBref / Opta  ·  {handle}\n"
+        f"Data: FIFA PMSR / Sofascore  ·  {handle}\n"
         f"#FIFAWorldCup2026 #WC26 #{home.replace(' ', '')} #{away.replace(' ', '')}"
     )
     tweets.append(tweet_n)

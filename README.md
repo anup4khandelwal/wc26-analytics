@@ -1,69 +1,60 @@
 # wc26-analytics
 
-FIFA World Cup 2026 match analytics pipeline — generates match graphics and
-tweet-thread text as committed files, ready for manual posting.
+Auto-generated FIFA World Cup 2026 match analytics — charts and stats committed after every match, published to GitHub Pages.
 
-## Output
+**Live site → https://anup4khandelwal.github.io/wc26-analytics/**
 
-Each run produces files under `output/<Home>_vs_<Away>/`:
+---
+
+## What it produces
+
+Each match generates four charts and a thread under `output/<Home>_vs_<Away>/`:
 
 | File | Description |
 |---|---|
-| `shot_map.png` | Both teams' shots, dot size ∝ xG, gold ★ for goals |
-| `xg_race.png` | Cumulative xG step chart with goal markers |
-| `pass_network_<Team>.png` | Formation-based passing hub (node size ∝ passes) |
-| `pizza_<Player>.png` | Percentile pizza vs all WC26 players in same position |
-| `def_actions_<Player>.png` | Defensive action bar chart + pitch zone |
-| `thread.md` | Numbered tweets (≤280 chars each) ready to post |
+| `shot_map.png` | Shot outcomes by category (Goal / On Target / Off Target / Blocked) with official xG totals |
+| `xg_race.png` | Cumulative xG step chart by minute, scaled to official FIFA totals |
+| `pass_network_<Team>.png` | Formation-based passing network — node size ∝ pass volume, edges ∝ combination frequency |
+| `thread.md` | Match stats summary ready for posting |
 
-## Website
+## How it runs
 
-All match reports are published automatically to GitHub Pages:
+A scheduled GitHub Actions workflow (`match_report.yml`) fires every 3 hours, detects newly completed matches, and commits the charts back to `main`. The `Deploy Site` workflow then rebuilds the GitHub Pages site automatically.
 
-**https://anup4khandelwal.github.io/wc26-analytics/**
+To trigger manually: **Actions → Match Report → Run workflow**
 
-The `Deploy Site` workflow rebuilds the page after every match run
-(`scripts/build_site.py` — stdlib only, no extra dependencies).
+## Data sources
 
-## Quick start
+| Source | Role |
+|---|---|
+| [FIFA PMSR PDFs](https://www.fifatrainingcentre.com/en/fifa-world-cup-2026/match-report-hub.php) | **Primary** — official post-match reports published within hours of each game. Provides score, lineups, team xG, possession, shots, per-shot log (minute / player / outcome / body part / delivery type) |
+| [Sofascore](https://sofascore.com) via [ScraperFC](https://github.com/eddwebster/ScraperFC) | Score + shot fallback when FIFA PDF isn't yet available |
+| [openfootball](https://github.com/openfootball/world-cup) | Fixture schedule and scores |
+
+## Local development
 
 ```bash
 pip install -r requirements.txt
 
-# By team names (auto-resolves FBref match ID):
-python scripts/run_match.py --home "Brazil" --away "Argentina" --handle "@yourtwitterhandle"
+# Process today's completed matches
+PYTHONPATH=. MPLBACKEND=Agg python scripts/run_today.py
 
-# By FBref match ID:
-python scripts/run_match.py --fbref-id abc1234ef
-
-# With player-specific charts:
-python scripts/run_match.py --home "Spain" --away "England" \
-    --charts all --player "Pedri" --handle "@yourtwitterhandle"
+# Build the static site locally
+python scripts/build_site.py
+# → opens site/index.html
 ```
 
-## GitHub Actions
+## Project layout
 
-Trigger **Actions → Match Report → Run workflow** and fill in:
-
-| Input | Description |
-|---|---|
-| `home_team` | e.g. `Brazil` |
-| `away_team` | e.g. `Argentina` |
-| `fbref_match_id` | FBref hash — overrides team names if set |
-| `charts` | `shot_map,xg_race,pass_network` (default) or `all` |
-| `player` | Required only for `pizza` / `defensive` charts |
-| `twitter_handle` | Your handle, e.g. `@anup4khandelwal` |
-
-The workflow commits generated files back to the repo automatically.
-
-## Data sources
-
-| Source | Used for |
-|---|---|
-| [FBref](https://fbref.com) via [soccerdata](https://github.com/probberechts/soccerdata) | Shots + xG, player stats, lineups (primary — works from residential IPs) |
-| [StatsBomb open data](https://github.com/statsbomb/open-data) | Automatic fallback — raw GitHub JSON works from GitHub Actions runners. Activates when StatsBomb publishes WC26 (they published WC22 free during the tournament) |
-| [Sofascore](https://sofascore.com) via [ScraperFC](https://github.com/eddwebster/ScraperFC) | Shot coords / player ratings fallback |
-| [openfootball](https://github.com/openfootball/world-cup) | Fixture list + scores |
-
-All raw pulls are cached as Parquet in `cache/` (gitignored). Every network
-call is preceded by a 3-second delay.
+```
+wc26/
+  fifa_pdf.py     FIFA PMSR PDF downloader + parser (PyMuPDF)
+  fetch.py        Data source orchestration — FIFA → StatsBomb → Sofascore
+  viz.py          Chart generators (mplsoccer, matplotlib)
+  compose.py      Tweet thread builder
+scripts/
+  run_today.py    Main pipeline — detects completed matches, runs the chain
+  build_site.py   Static site generator (stdlib only)
+output/           Generated charts + threads (committed to repo)
+cache/            Downloaded PDFs + parsed JSON (gitignored)
+```

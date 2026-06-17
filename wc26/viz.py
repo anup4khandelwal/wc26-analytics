@@ -61,7 +61,7 @@ def _save(fig: plt.Figure, path: Path) -> Path:
 def _brand(fig: plt.Figure, handle: str) -> None:
     fig.text(
         0.5, 0.013,
-        f"Data: FBref / Opta  ·  {handle}",
+        f"Data: FIFA PMSR / Sofascore  ·  {handle}",
         ha="center", va="bottom",
         fontsize=T_FOOT, color=MUTED,
         transform=fig.transFigure,
