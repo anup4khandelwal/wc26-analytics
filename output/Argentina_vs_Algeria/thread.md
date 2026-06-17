@@ -53,11 +53,10 @@ Argentina were clearly the better side on the numbers.
 ## Tweet 6
 
 Graphics attached 📸
-[shot_map.png]  [xg_race.png]  [pass_network_Argentina.png]  [pass_network_Algeria.png]
+[shot_map.png]  [xg_race.png]  [pass_network_Argentina.png]  [pass_network_Algeria.png]  [match_timeline.png]  [shot_creation.png]  [first_second_half.png]  [shot_conversion_table.png]  [player_ratings_card.png]  [momentum.png]
 
-Data: FIFA PMSR / Sofascore  ·  @anup4khandelwal
-#FIFAWorldCup2026 #WC26 #Argentina #Algeria
+Data: FIFA PMSR / Sofascore…
 
-*201 / 280 chars*
+*277 / 280 chars*
 
 ---

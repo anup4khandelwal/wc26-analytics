@@ -156,6 +156,15 @@ def _run_match(home: str, away: str, fbref_id: str | None) -> bool:
         except Exception as exc:
             logger.warning("  pass_network (%s) failed: %s", team, exc)
 
+    for fn_name in ["match_timeline", "shot_creation", "first_second_half",
+                    "shot_conversion_table", "player_ratings_card", "momentum_chart"]:
+        try:
+            p = getattr(viz, fn_name)(match, OUTPUT_DIR, handle=HANDLE)
+            viz_paths.append(p)
+            logger.info("  %s → %s", fn_name, p.name)
+        except Exception as exc:
+            logger.warning("  %s failed: %s", fn_name, exc)
+
     try:
         thread_path = compose_thread(match, viz_paths, OUTPUT_DIR, handle=HANDLE)
         logger.info("  thread → %s", thread_path)

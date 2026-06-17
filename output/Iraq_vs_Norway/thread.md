@@ -53,11 +53,10 @@ Norway were clearly the better side on the numbers.
 ## Tweet 6
 
 Graphics attached 📸
-[shot_map.png]  [xg_race.png]  [pass_network_Iraq.png]  [pass_network_Norway.png]
+[shot_map.png]  [xg_race.png]  [pass_network_Iraq.png]  [pass_network_Norway.png]  [match_timeline.png]  [shot_creation.png]  [first_second_half.png]  [shot_conversion_table.png]  [player_ratings_card.png]  [momentum.png]
 
-Data: FIFA PMSR / Sofascore  ·  @anup4khandelwal
-#FIFAWorldCup2026 #WC26 #Iraq #Norway
+Data: FIFA PMSR / Sofascore  ·  @a…
 
-*189 / 280 chars*
+*278 / 280 chars*
 
 ---

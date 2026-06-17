@@ -858,7 +858,708 @@ def pass_network(
     return _save(fig, path)
 
 
-# ── 5. defensive actions ──────────────────────────────────────────────────────
+# ── 5. match timeline ─────────────────────────────────────────────────────────
+
+def match_timeline(
+    match: dict,
+    output_dir: Path,
+    handle: str = "@anup4khandelwal",
+) -> Path:
+    """
+    Horizontal timeline (0–95 min) with home (top) and away (bottom) lanes.
+    Shots are semi-transparent circles; goals are gold stars with labels.
+    """
+    shots_raw = match.get("shots")
+    home, away = _team_names(match)
+    sc = _score(match)
+
+    fig, ax = plt.subplots(figsize=(FIG_W, 5), facecolor=BG)
+    fig.subplots_adjust(left=0.07, right=0.97, top=0.80, bottom=0.15)
+    ax.set_facecolor(BG)
+
+    # Lane centres: home=+1, away=-1
+    LANE_HOME, LANE_AWAY = 1.0, -1.0
+
+    if shots_raw is not None and not shots_raw.empty:
+        shots = _norm_shots(shots_raw)
+        for team_name, lane, color in [
+            (home, LANE_HOME, HOME_C),
+            (away, LANE_AWAY, AWAY_C),
+        ]:
+            ts = shots[shots["_team"].str.lower().str.contains(team_name.lower(), na=False)]
+            if ts.empty:
+                continue
+
+            regular = ts[~ts["is_goal"]]
+            goals = ts[ts["is_goal"]]
+
+            # Plot shot circles
+            ax.scatter(
+                regular["_minute"],
+                [lane] * len(regular),
+                s=60, c=color, alpha=0.40, edgecolors="none", zorder=4,
+            )
+
+            # Plot goal stars
+            for _, row in goals.iterrows():
+                minute = int(row["_minute"])
+                ax.scatter(
+                    minute, lane,
+                    s=280, c=GOAL_C, marker="*", edgecolors=BG,
+                    linewidths=0.8, zorder=6,
+                )
+                # Get last name
+                player_str = str(row.get("player", row.get("_player", "")))
+                lastname = player_str.split()[-1] if player_str.strip() else ""
+                label = f"⚽ {minute}' {lastname}"
+                vert_offset = 0.22 if lane > 0 else -0.22
+                va = "bottom" if lane > 0 else "top"
+                ax.text(
+                    minute, lane + vert_offset, label,
+                    ha="center", va=va, fontsize=9, color=GOAL_C,
+                    fontweight="bold", zorder=7,
+                )
+
+    # HT and ET lines
+    ax.axvline(45, color=GRID_C, linestyle="--", linewidth=1.5, zorder=2)
+    ax.text(45.5, 1.55, "HT", color=MUTED, fontsize=T_TICK - 1, va="center")
+    ax.axvline(90, color=GRID_C, linestyle=":", linewidth=1.0, zorder=2, alpha=0.6)
+    ax.text(90.5, 1.55, "ET", color=MUTED, fontsize=T_TICK - 1, va="center", alpha=0.6)
+
+    # Lane labels
+    ax.text(-1, LANE_HOME, home, ha="right", va="center",
+            fontsize=T_TICK, color=HOME_C, fontweight="bold")
+    ax.text(-1, LANE_AWAY, away, ha="right", va="center",
+            fontsize=T_TICK, color=AWAY_C, fontweight="bold")
+
+    # Horizontal lane lines
+    ax.axhline(LANE_HOME, color=HOME_C, linewidth=0.6, alpha=0.3, zorder=1)
+    ax.axhline(LANE_AWAY, color=AWAY_C, linewidth=0.6, alpha=0.3, zorder=1)
+
+    ax.set_xlim(-2, 97)
+    ax.set_ylim(-1.8, 2.0)
+    ax.set_xlabel("Minute", fontsize=T_LABEL, color=TEXT)
+    ax.set_xticks(range(0, 96, 15))
+    ax.tick_params(colors=TEXT, labelsize=T_TICK)
+    ax.yaxis.set_visible(False)
+    ax.spines["top"].set_visible(False)
+    ax.spines["left"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["bottom"].set_color(GRID_C)
+
+    title = f"{home}  {sc['home']}–{sc['away']}  {away}  —  Match Timeline"
+    fig.suptitle(title, color=TEXT, fontsize=T_TITLE, fontweight="bold", y=0.96)
+    _brand(fig, handle)
+
+    path = output_dir / _match_key(match) / "match_timeline.png"
+    return _save(fig, path)
+
+
+# ── 6. shot creation ──────────────────────────────────────────────────────────
+
+def shot_creation(
+    match: dict,
+    output_dir: Path,
+    handle: str = "@anup4khandelwal",
+) -> Path:
+    """
+    Two side-by-side horizontal bar charts: delivery_type and body_part
+    breakdowns for home and away teams.
+    """
+    shots_raw = match.get("shots")
+    home, away = _team_names(match)
+    sc = _score(match)
+
+    DELIVERY_CATS = ["Pass", "Cross", "Corner", "Free Kick", "Dribble", "Set Piece", "Other"]
+    BODY_CATS = ["Right Foot", "Left Foot", "Head", "Other"]
+
+    def _normalise_delivery(val: str) -> str:
+        v = str(val).strip().lower()
+        if "corner" in v:
+            return "Corner"
+        if "cross" in v:
+            return "Cross"
+        if "free" in v or "freekick" in v:
+            return "Free Kick"
+        if "dribble" in v or "carry" in v:
+            return "Dribble"
+        if "set" in v and "piece" in v:
+            return "Set Piece"
+        if "pass" in v:
+            return "Pass"
+        return "Other"
+
+    def _normalise_body(val: str) -> str:
+        v = str(val).strip().lower()
+        if "right" in v and ("foot" in v or "rf" in v):
+            return "Right Foot"
+        if "left" in v and ("foot" in v or "lf" in v):
+            return "Left Foot"
+        if "head" in v:
+            return "Head"
+        return "Other"
+
+    def _count_for_team(team_name: str):
+        del_counts = {k: 0 for k in DELIVERY_CATS}
+        body_counts = {k: 0 for k in BODY_CATS}
+        if shots_raw is None or shots_raw.empty:
+            return del_counts, body_counts
+        tc = _col(shots_raw, _TEAM_CANDIDATES)
+        del_c = next((c for c in ["delivery_type", "technique", "shot_technique"]
+                      if c in shots_raw.columns), None)
+        body_c = next((c for c in ["body_part", "shot_body_part", "bodypart"]
+                       if c in shots_raw.columns), None)
+        ts = shots_raw
+        if tc:
+            ts = shots_raw[shots_raw[tc].astype(str).str.lower().str.contains(
+                team_name.lower(), na=False)]
+        if del_c:
+            for val in ts[del_c].dropna():
+                cat = _normalise_delivery(str(val))
+                del_counts[cat] = del_counts.get(cat, 0) + 1
+        if body_c:
+            for val in ts[body_c].dropna():
+                cat = _normalise_body(str(val))
+                body_counts[cat] = body_counts.get(cat, 0) + 1
+        return del_counts, body_counts
+
+    h_del, h_body = _count_for_team(home)
+    a_del, a_body = _count_for_team(away)
+
+    fig, axes = plt.subplots(1, 2, figsize=(FIG_W, FIG_H), facecolor=BG)
+    fig.subplots_adjust(left=0.06, right=0.97, top=0.82, bottom=0.10, wspace=0.38)
+
+    panel_data = [
+        (axes[0], "Delivery Type", DELIVERY_CATS, h_del, a_del),
+        (axes[1], "Body Part", BODY_CATS, h_body, a_body),
+    ]
+
+    for ax, panel_title, cats, h_counts, a_counts in panel_data:
+        ax.set_facecolor(BG)
+        for sp in ax.spines.values():
+            sp.set_visible(False)
+        ax.tick_params(colors=TEXT, labelsize=T_TICK)
+
+        y_pos = np.arange(len(cats))
+        bar_h = 0.35
+
+        h_vals = [h_counts[c] for c in cats]
+        a_vals = [a_counts[c] for c in cats]
+
+        ax.barh(y_pos + bar_h / 2, h_vals, height=bar_h,
+                color=HOME_C, alpha=0.85, label=home, edgecolor=BG)
+        ax.barh(y_pos - bar_h / 2, a_vals, height=bar_h,
+                color=AWAY_C, alpha=0.85, label=away, edgecolor=BG)
+
+        for i, (hv, av) in enumerate(zip(h_vals, a_vals)):
+            if hv > 0:
+                ax.text(hv + 0.05, i + bar_h / 2, str(hv),
+                        va="center", ha="left", fontsize=T_TICK, color=TEXT)
+            if av > 0:
+                ax.text(av + 0.05, i - bar_h / 2, str(av),
+                        va="center", ha="left", fontsize=T_TICK, color=TEXT)
+
+        ax.set_yticks(y_pos)
+        ax.set_yticklabels(cats, fontsize=T_TICK, color=TEXT)
+        ax.set_title(panel_title, color=TEXT, fontsize=T_LABEL + 2,
+                     fontweight="bold", pad=8)
+        ax.xaxis.grid(True, color=GRID_C, linewidth=0.8)
+        ax.set_axisbelow(True)
+
+    legend_elements = [
+        mpatches.Patch(facecolor=HOME_C, label=home),
+        mpatches.Patch(facecolor=AWAY_C, label=away),
+    ]
+    fig.legend(handles=legend_elements, loc="lower center", ncol=2,
+               facecolor=BG, edgecolor=GRID_C, labelcolor=TEXT,
+               fontsize=T_TICK, bbox_to_anchor=(0.5, 0.02))
+
+    title = f"{home}  {sc['home']}–{sc['away']}  {away}  —  Shot Creation"
+    fig.suptitle(title, color=TEXT, fontsize=T_TITLE, fontweight="bold", y=0.95)
+    _brand(fig, handle)
+
+    path = output_dir / _match_key(match) / "shot_creation.png"
+    return _save(fig, path)
+
+
+# ── 7. first / second half ────────────────────────────────────────────────────
+
+def first_second_half(
+    match: dict,
+    output_dir: Path,
+    handle: str = "@anup4khandelwal",
+) -> Path:
+    """
+    2x2 grid comparing H1 (<=45 min) vs H2 (>45 min) for both teams:
+    Shots, xG, Goals, On-Target.
+    """
+    shots_raw = match.get("shots")
+    home, away = _team_names(match)
+    sc = _score(match)
+    team_stats = match.get("meta", {}).get("team_stats", {})
+
+    METRICS = ["Shots", "xG", "Goals", "On Target"]
+
+    def _half_stats(team_name: str) -> dict:
+        result = {m: {"H1": 0.0, "H2": 0.0} for m in METRICS}
+        if shots_raw is None or shots_raw.empty:
+            return result
+        shots = _norm_shots(shots_raw)
+        tc = _col(shots, _TEAM_CANDIDATES)
+        ts = shots
+        if tc:
+            ts = shots[shots[tc].astype(str).str.lower().str.contains(
+                team_name.lower(), na=False)]
+        if ts.empty:
+            return result
+
+        h1 = ts[ts["_minute"] <= 45]
+        h2 = ts[ts["_minute"] > 45]
+
+        result["Shots"]["H1"] = float(len(h1))
+        result["Shots"]["H2"] = float(len(h2))
+
+        # Scale xG to FIFA totals if available
+        xg_key = "xg_home" if team_name.lower() in home.lower() else "xg_away"
+        total_xg_fifa = team_stats.get(xg_key)
+        raw_h1_xg = float(h1["norm_xg"].sum())
+        raw_h2_xg = float(h2["norm_xg"].sum())
+        if total_xg_fifa is not None and (raw_h1_xg + raw_h2_xg) > 0:
+            scale = float(total_xg_fifa) / (raw_h1_xg + raw_h2_xg)
+            result["xG"]["H1"] = round(raw_h1_xg * scale, 2)
+            result["xG"]["H2"] = round(raw_h2_xg * scale, 2)
+        else:
+            result["xG"]["H1"] = round(raw_h1_xg, 2)
+            result["xG"]["H2"] = round(raw_h2_xg, 2)
+
+        result["Goals"]["H1"] = float(h1["is_goal"].sum())
+        result["Goals"]["H2"] = float(h2["is_goal"].sum())
+
+        outc_c = _col(ts, _OUTCOME_CANDIDATES)
+        if outc_c:
+            on_tgt_h1 = h1[
+                h1[outc_c].astype(str).str.lower().str.contains(
+                    "on target|saved|goal", na=False)
+            ]
+            on_tgt_h2 = h2[
+                h2[outc_c].astype(str).str.lower().str.contains(
+                    "on target|saved|goal", na=False)
+            ]
+            result["On Target"]["H1"] = float(len(on_tgt_h1))
+            result["On Target"]["H2"] = float(len(on_tgt_h2))
+        return result
+
+    h_stats = _half_stats(home)
+    a_stats = _half_stats(away)
+
+    # Lighter shade via reduced alpha (encode as color with transparency)
+    HOME_C2 = HOME_C + "88"
+    AWAY_C2 = AWAY_C + "88"
+
+    fig, axes = plt.subplots(2, 2, figsize=(FIG_W, FIG_H), facecolor=BG)
+    fig.subplots_adjust(left=0.06, right=0.97, top=0.82, bottom=0.12,
+                        hspace=0.45, wspace=0.30)
+
+    GROUP_LABELS = ["H1 Home", "H1 Away", "H2 Home", "H2 Away"]
+    BAR_COLORS = [HOME_C, AWAY_C, HOME_C2, AWAY_C2]
+
+    for idx, metric in enumerate(METRICS):
+        ax = axes[idx // 2][idx % 2]
+        ax.set_facecolor(BG)
+        for sp in ax.spines.values():
+            sp.set_color(GRID_C)
+        ax.tick_params(colors=TEXT, labelsize=T_TICK)
+
+        vals = [
+            h_stats[metric]["H1"],
+            a_stats[metric]["H1"],
+            h_stats[metric]["H2"],
+            a_stats[metric]["H2"],
+        ]
+        x_pos = np.arange(len(GROUP_LABELS))
+        bars = ax.bar(x_pos, vals, color=BAR_COLORS, edgecolor=BG,
+                      width=0.55, zorder=3)
+        ax.yaxis.grid(True, color=GRID_C, linewidth=0.8)
+        ax.set_axisbelow(True)
+        ax.set_xticks(x_pos)
+        ax.set_xticklabels(GROUP_LABELS, fontsize=T_TICK - 1, color=TEXT,
+                           rotation=20, ha="right")
+        ax.set_title(metric, color=TEXT, fontsize=T_LABEL, fontweight="bold", pad=6)
+
+        fmt = ".2f" if metric == "xG" else ".0f"
+        for bar, val in zip(bars, vals):
+            if val > 0:
+                label_str = f"{val:{fmt}}"
+                ax.text(bar.get_x() + bar.get_width() / 2, val + 0.02,
+                        label_str, ha="center", va="bottom",
+                        fontsize=T_TICK, color=TEXT, fontweight="bold")
+
+    title = f"{home}  {sc['home']}–{sc['away']}  {away}  —  First vs Second Half"
+    fig.suptitle(title, color=TEXT, fontsize=T_TITLE, fontweight="bold", y=0.95)
+    _brand(fig, handle)
+
+    path = output_dir / _match_key(match) / "first_second_half.png"
+    return _save(fig, path)
+
+
+# ── 8. shot conversion table ──────────────────────────────────────────────────
+
+def shot_conversion_table(
+    match: dict,
+    output_dir: Path,
+    handle: str = "@anup4khandelwal",
+) -> Path:
+    """
+    Matplotlib table of per-player shot stats, max 14 rows.
+    """
+    shots_raw = match.get("shots")
+    home, away = _team_names(match)
+    sc = _score(match)
+
+    COL_HEADERS = ["Player", "Team", "Shots", "Goals", "On Tgt", "Blocked", "Off Tgt"]
+    MAX_ROWS = 14
+
+    rows: list = []
+
+    if shots_raw is not None and not shots_raw.empty:
+        pc = _col(shots_raw, _PLAYER_CANDIDATES)
+        tc = _col(shots_raw, _TEAM_CANDIDATES)
+        outc = _col(shots_raw, _OUTCOME_CANDIDATES)
+
+        if pc is not None:
+            for player, grp in shots_raw.groupby(pc):
+                if grp.empty:
+                    continue
+                team_val = str(grp.iloc[0][tc]) if tc else ""
+                shots_total = len(grp)
+                goals = 0
+                on_tgt = 0
+                blocked = 0
+                off_tgt = 0
+                if outc:
+                    for outcome_val in grp[outc].astype(str).str.lower():
+                        if "goal" in outcome_val:
+                            goals += 1
+                            on_tgt += 1
+                        elif "on target" in outcome_val or "saved" in outcome_val:
+                            on_tgt += 1
+                        elif "blocked" in outcome_val or "block" in outcome_val:
+                            blocked += 1
+                        elif ("off" in outcome_val or "wide" in outcome_val
+                              or "high" in outcome_val):
+                            off_tgt += 1
+                rows.append([str(player), team_val, shots_total, goals,
+                              on_tgt, blocked, off_tgt])
+
+    # Sort by shots descending
+    rows.sort(key=lambda r: r[2], reverse=True)
+    rows = rows[:MAX_ROWS]
+
+    fig, ax = plt.subplots(figsize=(FIG_W, FIG_H), facecolor=BG)
+    ax.set_facecolor(BG)
+    ax.axis("off")
+    fig.subplots_adjust(left=0.03, right=0.97, top=0.84, bottom=0.08)
+
+    if not rows:
+        ax.text(0.5, 0.5, "No shot data available", ha="center", va="center",
+                fontsize=T_LABEL, color=MUTED, transform=ax.transAxes)
+    else:
+        n_rows = len(rows)
+        n_cols = len(COL_HEADERS)
+        cell_colors = []
+        for i, row in enumerate(rows):
+            row_team = row[1]
+            base_color = "#161b26" if i % 2 == 0 else "#1e2535"
+            row_colors = [base_color] * n_cols
+            if home.lower() in row_team.lower():
+                row_colors[0] = "#003d30"
+            elif away.lower() in row_team.lower():
+                row_colors[0] = "#3d1010"
+            cell_colors.append(row_colors)
+
+        # Display rows: shorten player name if too long
+        display_rows = []
+        for row in rows:
+            player_short = str(row[0])
+            if len(player_short) > 22:
+                player_short = player_short[:20] + "…"
+            display_rows.append([player_short] + row[1:])
+
+        table = ax.table(
+            cellText=display_rows,
+            colLabels=COL_HEADERS,
+            cellColours=cell_colors,
+            colColours=[GOAL_C] * n_cols,
+            loc="center",
+            cellLoc="center",
+        )
+        table.auto_set_font_size(False)
+        table.set_fontsize(T_TICK)
+        table.scale(1.0, 1.8)
+
+        # Style header cells
+        for col_idx in range(n_cols):
+            cell = table[(0, col_idx)]
+            cell.set_text_props(color=BG, fontweight="bold", fontsize=T_TICK)
+            cell.set_facecolor(GOAL_C)
+
+        # Style data cells
+        for row_idx in range(1, n_rows + 1):
+            for col_idx in range(n_cols):
+                cell = table[(row_idx, col_idx)]
+                cell.set_text_props(color=TEXT, fontsize=T_TICK - 1)
+
+    title = f"{home}  {sc['home']}–{sc['away']}  {away}  —  Shot Conversion"
+    fig.suptitle(title, color=TEXT, fontsize=T_TITLE, fontweight="bold", y=0.95)
+    _brand(fig, handle)
+
+    path = output_dir / _match_key(match) / "shot_conversion_table.png"
+    return _save(fig, path)
+
+
+# ── 9. player ratings card ────────────────────────────────────────────────────
+
+def player_ratings_card(
+    match: dict,
+    output_dir: Path,
+    handle: str = "@anup4khandelwal",
+) -> Path:
+    """
+    Top 5 performers per team — ratings bars if Sofascore available, else shots.
+    """
+    home, away = _team_names(match)
+    sc = _score(match)
+    shots_raw = match.get("shots")
+    sofascore = match.get("sofascore", {})
+
+    # Try to get Sofascore ratings
+    ratings_df = sofascore.get("ratings") if isinstance(sofascore, dict) else None
+    use_ratings = False
+    rating_col = None
+    if (ratings_df is not None and isinstance(ratings_df, pd.DataFrame)
+            and not ratings_df.empty):
+        rating_col = next(
+            (c for c in ["rating", "Rating", "sofascore_rating"]
+             if c in ratings_df.columns),
+            None,
+        )
+        if rating_col is not None:
+            use_ratings = True
+
+    def _top5_ratings(team_name: str) -> list:
+        tc = _col(ratings_df, _TEAM_CANDIDATES)
+        pc = _col(ratings_df, _PLAYER_CANDIDATES)
+        if pc is None:
+            return []
+        df = ratings_df
+        if tc:
+            df = ratings_df[ratings_df[tc].astype(str).str.lower().str.contains(
+                team_name.lower(), na=False)]
+        if df.empty:
+            return []
+        df = df.copy()
+        df["_rating_num"] = pd.to_numeric(df[rating_col], errors="coerce")
+        df = df.dropna(subset=["_rating_num"]).sort_values("_rating_num", ascending=False)
+        top = df.head(5)
+        return [(str(row[pc]), float(row["_rating_num"])) for _, row in top.iterrows()]
+
+    def _top5_shots(team_name: str) -> list:
+        if shots_raw is None or shots_raw.empty:
+            return []
+        pc = _col(shots_raw, _PLAYER_CANDIDATES)
+        tc = _col(shots_raw, _TEAM_CANDIDATES)
+        if pc is None:
+            return []
+        df = shots_raw
+        if tc:
+            df = shots_raw[shots_raw[tc].astype(str).str.lower().str.contains(
+                team_name.lower(), na=False)]
+        if df.empty:
+            return []
+        counts = df.groupby(pc).size().sort_values(ascending=False).head(5)
+        return [(str(player), float(cnt)) for player, cnt in counts.items()]
+
+    if use_ratings:
+        h_top = _top5_ratings(home)
+        a_top = _top5_ratings(away)
+        bar_label = "Rating (0-10)"
+        x_max = 10.0
+        metric_label = "Sofascore Rating"
+    else:
+        h_top = _top5_shots(home)
+        a_top = _top5_shots(away)
+        all_vals = [v for _, v in h_top + a_top]
+        x_max = float(max(all_vals)) + 1 if all_vals else 5.0
+        bar_label = "Shots"
+        metric_label = "Shots"
+
+    fig, axes = plt.subplots(1, 2, figsize=(FIG_W, FIG_H), facecolor=BG)
+    fig.subplots_adjust(left=0.06, right=0.97, top=0.82, bottom=0.10, wspace=0.40)
+
+    for ax, team_name, top5, color in [
+        (axes[0], home, h_top, HOME_C),
+        (axes[1], away, a_top, AWAY_C),
+    ]:
+        ax.set_facecolor(BG)
+        for sp in ax.spines.values():
+            sp.set_visible(False)
+        ax.tick_params(colors=TEXT, labelsize=T_TICK)
+
+        if not top5:
+            ax.text(0.5, 0.5, "No data", ha="center", va="center",
+                    fontsize=T_LABEL, color=MUTED, transform=ax.transAxes)
+        else:
+            players = [p for p, _ in top5]
+            vals = [v for _, v in top5]
+            short_names = [p.split()[-1] if len(p) > 15 else p for p in players]
+            y_pos = np.arange(len(players))
+
+            bars = ax.barh(y_pos, vals, color=color, alpha=0.85,
+                           edgecolor=BG, height=0.55, zorder=3)
+            ax.set_yticks(y_pos)
+            ax.set_yticklabels(short_names, fontsize=T_TICK, color=TEXT)
+            ax.set_xlim(0, x_max)
+            ax.xaxis.grid(True, color=GRID_C, linewidth=0.8)
+            ax.set_axisbelow(True)
+            ax.set_xlabel(bar_label, fontsize=T_TICK, color=MUTED)
+            ax.invert_yaxis()
+
+            fmt = ".1f" if use_ratings else ".0f"
+            for bar, val in zip(bars, vals):
+                ax.text(val + 0.05, bar.get_y() + bar.get_height() / 2,
+                        f"{val:{fmt}}", va="center", ha="left",
+                        fontsize=T_TICK, color=TEXT, fontweight="bold")
+
+        ax.set_title(team_name, color=color, fontsize=T_LABEL + 4,
+                     fontweight="bold", pad=8)
+
+    title = (f"{home}  {sc['home']}–{sc['away']}  {away}"
+             f"  —  Top Performers ({metric_label})")
+    fig.suptitle(title, color=TEXT, fontsize=T_TITLE, fontweight="bold", y=0.95)
+    _brand(fig, handle)
+
+    path = output_dir / _match_key(match) / "player_ratings_card.png"
+    return _save(fig, path)
+
+
+# ── 10. momentum chart ────────────────────────────────────────────────────────
+
+def momentum_chart(
+    match: dict,
+    output_dir: Path,
+    handle: str = "@anup4khandelwal",
+) -> Path:
+    """
+    Rolling 5-minute window shot differential + cumulative xG lines.
+    """
+    shots_raw = match.get("shots")
+    home, away = _team_names(match)
+    sc = _score(match)
+    team_stats = match.get("meta", {}).get("team_stats", {})
+
+    WINDOW = 5
+    bins = list(range(0, 96, WINDOW))  # 0,5,10,...,90
+    bin_labels = [b + WINDOW / 2 for b in bins]  # centre of each bin
+
+    fig, ax1 = plt.subplots(figsize=(FIG_W, FIG_H), facecolor=BG)
+    ax2 = ax1.twinx()
+
+    ax1.set_facecolor(BG)
+    ax2.set_facecolor(BG)
+    fig.subplots_adjust(left=0.07, right=0.93, top=0.88, bottom=0.10)
+
+    if shots_raw is not None and not shots_raw.empty:
+        shots = _norm_shots(shots_raw)
+
+        xgc = _col(shots_raw, _XG_CANDIDATES)
+        has_real_xg = (xgc is not None and
+                       shots_raw[xgc].notna().any() and
+                       shots_raw[xgc].astype(float).sum() > 0)
+
+        home_shots = shots[shots["_team"].str.lower().str.contains(
+            home.lower(), na=False)].copy()
+        away_shots = shots[shots["_team"].str.lower().str.contains(
+            away.lower(), na=False)].copy()
+
+        # Scale xG to FIFA totals if needed
+        if not has_real_xg:
+            for ts, key in [(home_shots, "xg_home"), (away_shots, "xg_away")]:
+                if key in team_stats and len(ts) > 0:
+                    total_xg = float(team_stats[key])
+                    ts["norm_xg"] = total_xg / len(ts)
+
+        # Shot differential per window
+        h_counts = np.zeros(len(bins))
+        a_counts = np.zeros(len(bins))
+        for i, b in enumerate(bins):
+            h_counts[i] = float(((home_shots["_minute"] >= b)
+                                  & (home_shots["_minute"] < b + WINDOW)).sum())
+            a_counts[i] = float(((away_shots["_minute"] >= b)
+                                  & (away_shots["_minute"] < b + WINDOW)).sum())
+
+        diff = h_counts - a_counts
+
+        for i, (mid, d) in enumerate(zip(bin_labels, diff)):
+            color = HOME_C if d >= 0 else AWAY_C
+            ax1.bar(mid, d, width=WINDOW * 0.85, color=color, alpha=0.75,
+                    edgecolor=BG, zorder=3)
+
+        # Cumulative xG lines on secondary axis
+        for ts, color, label in [
+            (home_shots, HOME_C, home),
+            (away_shots, AWAY_C, away),
+        ]:
+            ts_sorted = ts.sort_values("_minute")
+            if ts_sorted.empty:
+                continue
+            minutes = [0.0] + ts_sorted["_minute"].tolist() + [95.0]
+            cum_xg = [0.0] + ts_sorted["norm_xg"].cumsum().tolist()
+            cum_xg.append(cum_xg[-1])
+            ax2.step(minutes, cum_xg, where="post", color=color,
+                     linewidth=1.5, alpha=0.6, linestyle="--",
+                     label=f"{label} xG ({cum_xg[-1]:.2f})")
+    else:
+        ax1.text(0.5, 0.5, "No shot data available", ha="center", va="center",
+                 fontsize=T_LABEL, color=MUTED, transform=ax1.transAxes)
+
+    # HT line
+    ax1.axvline(45, color=GRID_C, linestyle="--", linewidth=1.5, zorder=2)
+    ax1.text(45.5, ax1.get_ylim()[1] * 0.9, "HT", color=MUTED,
+             fontsize=T_TICK - 1, va="top")
+    ax1.axhline(0, color=MUTED, linewidth=0.8, zorder=2)
+
+    ax1.set_xlabel("Minute", fontsize=T_LABEL, color=TEXT)
+    ax1.set_ylabel("Shot Differential (Home − Away)", fontsize=T_TICK, color=TEXT)
+    ax2.set_ylabel("Cumulative xG", fontsize=T_TICK, color=MUTED)
+    ax1.tick_params(colors=TEXT, labelsize=T_TICK)
+    ax2.tick_params(colors=MUTED, labelsize=T_TICK)
+    ax1.spines[:].set_color(GRID_C)
+    ax2.spines[:].set_color(GRID_C)
+    ax1.set_xlim(0, 96)
+    ax1.yaxis.grid(True, color=GRID_C, linewidth=0.6, linestyle=":")
+    ax1.set_axisbelow(True)
+
+    legend_elements = [
+        mpatches.Patch(facecolor=HOME_C, label=f"{home} dominant"),
+        mpatches.Patch(facecolor=AWAY_C, label=f"{away} dominant"),
+        Line2D([0], [0], color=HOME_C, linewidth=1.5, linestyle="--",
+               label=f"{home} xG"),
+        Line2D([0], [0], color=AWAY_C, linewidth=1.5, linestyle="--",
+               label=f"{away} xG"),
+    ]
+    ax1.legend(handles=legend_elements, facecolor=BG, edgecolor=GRID_C,
+               labelcolor=TEXT, fontsize=T_TICK, loc="upper left")
+
+    title = (f"{home}  {sc['home']}–{sc['away']}  {away}"
+             f"  —  Momentum (5-min windows)")
+    fig.suptitle(title, color=TEXT, fontsize=T_TITLE, fontweight="bold", y=0.96)
+    _brand(fig, handle)
+
+    path = output_dir / _match_key(match) / "momentum.png"
+    return _save(fig, path)
+
+
+# ── 11. defensive actions ─────────────────────────────────────────────────────
 
 _DEF_METRICS = [
     ("tackles", HOME_C, "Tackles", "o"),

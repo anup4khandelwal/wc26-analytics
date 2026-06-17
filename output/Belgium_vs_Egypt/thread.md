@@ -45,11 +45,10 @@ Both teams created chances but quality was key.
 ## Tweet 5
 
 Graphics attached 📸
-[shot_map.png]  [xg_race.png]  [pass_network_Belgium.png]  [pass_network_Egypt.png]
+[shot_map.png]  [xg_race.png]  [pass_network_Belgium.png]  [pass_network_Egypt.png]  [match_timeline.png]  [shot_creation.png]  [first_second_half.png]  [shot_conversion_table.png]  [player_ratings_card.png]  [momentum.png]
 
-Data: FIFA PMSR / Sofascore  ·  @anup4khandelwal
-#FIFAWorldCup2026 #WC26 #Belgium #Egypt
+Data: FIFA PMSR / Sofascore  ·…
 
-*193 / 280 chars*
+*276 / 280 chars*
 
 ---

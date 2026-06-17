@@ -53,11 +53,10 @@ Austria were clearly the better side on the numbers.
 ## Tweet 6
 
 Graphics attached 📸
-[shot_map.png]  [xg_race.png]  [pass_network_Austria.png]  [pass_network_Jordan.png]
+[shot_map.png]  [xg_race.png]  [pass_network_Austria.png]  [pass_network_Jordan.png]  [match_timeline.png]  [shot_creation.png]  [first_second_half.png]  [shot_conversion_table.png]  [player_ratings_card.png]  [momentum.png]
 
-Data: FIFA PMSR / Sofascore  ·  @anup4khandelwal
-#FIFAWorldCup2026 #WC26 #Austria #Jordan
+Data: FIFA PMSR / Sofascore  ·…
 
-*195 / 280 chars*
+*277 / 280 chars*
 
 ---
