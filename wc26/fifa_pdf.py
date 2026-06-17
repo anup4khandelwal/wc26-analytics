@@ -352,72 +352,129 @@ def _parse_cover(page) -> dict:
 def _parse_lineups(page) -> dict:
     """
     Page 1: starting XI for home (left column) and away (right column).
-    Uses x-coordinate midpoint to separate teams.
-    Returns {"home": [...], "away": [...]} lists of player dicts.
+
+    Home (Belgium-style, left col):  [num] [POS] [Name…]   x ~ 40–260
+    Away (Egypt-style, right col):   [Name…] [POS] [num]   x ~ 730–910
+
+    Uses x-coordinate separation — home < 40 % of page width, away > 60 %.
+    Only includes starting XI (stops at SUBSTITUTES heading).
     """
     words = _page_words(page)
     if not words:
         return {"home": [], "away": []}
 
-    page_width = page.rect.width
-    mid = page_width / 2
+    w = page.rect.width
+    cut_lo = w * 0.40   # home words have x < cut_lo
+    cut_hi = w * 0.55   # away words have x > cut_hi
 
-    home_words = [(x, y, w) for x, y, w in words if x < mid]
-    away_words = [(x, y, w) for x, y, w in words if x >= mid]
+    home_words = [(x, y, t) for x, y, t in words if x < cut_lo]
+    away_words = [(x, y, t) for x, y, t in words if x > cut_hi]
 
-    def _extract_players(wds: list[tuple]) -> list[dict]:
-        rows = _group_rows(wds)
-        players = []
-        for row in rows:
-            text = _row_text(row)
-            # Look for a position code (GK/DF/MF/FW) at start of row
-            pm = re.match(r'\b(GK|DF|MF|FW)\b\s+(\d+)\s+(.+)', text)
-            if pm:
+    def _clean(s: str) -> str:
+        """Remove stray tokens from player name strings."""
+        s = re.sub(r"\s*\d+'\s*", " ", s)          # sub markers "86'"
+        s = re.sub(r"\s*\d+-\d+-\d+-?\d?\s*", " ", s)  # formation "4-2-3-1"
+        s = re.sub(r"\s+\d+\s*$", "", s)           # trailing jersey numbers
+        s = re.sub(r"^\d+\s+", "", s)              # leading jersey numbers
+        return s.strip()
+
+    def _extract_home(wds: list[tuple]) -> list[dict]:
+        """[num] [POS] [Name…] — Belgium-style."""
+        players, in_starting = [], True
+        for row in _group_rows(wds):
+            txt = _row_text(row)
+            if "SUBSTITUTE" in txt.upper():
+                in_starting = False
+                continue
+            if not in_starting:
+                continue
+            m = re.match(r'(\d{1,2})\s+(GK|DF|MF|FW)\s+(.+)', txt)
+            if m:
                 players.append({
-                    "position": pm.group(1),
-                    "number": int(pm.group(2)),
-                    "name": pm.group(3).strip(),
+                    "number": int(m.group(1)),
+                    "position": m.group(2),
+                    "name": _clean(m.group(3)),
                 })
         return players
 
+    _NON_PLAYER = {"STARTING", "SUBSTITUTES", "FORMATION", "DISTRIBUTION",
+                   "MATCH", "SUMMARY", "TEAMS", "PLAYER", "COACH"}
+
+    def _extract_away(wds: list[tuple]) -> list[dict]:
+        """[Name…] [POS] [num] — Egypt-style (reversed)."""
+        players, in_starting = [], True
+        for row in _group_rows(wds):
+            txt = _row_text(row)
+            if "SUBSTITUTE" in txt.upper():
+                in_starting = False
+                continue
+            if not in_starting:
+                continue
+            # Strip leading sub-minute markers before the name
+            txt = re.sub(r"^(\d+'\s*)+", "", txt).strip()
+            # Position and number at the end: "MOSTAFA SHOUBIR GK 23" or "FW10"
+            m = re.search(r'^(.+?)\s+(GK|DF|MF|FW)\s*(\d{1,2})$', txt)
+            if m:
+                name = _clean(m.group(1))
+                # Skip rows where non-player keywords leaked into the name
+                name_words = set(name.upper().split())
+                if name_words & _NON_PLAYER:
+                    name = " ".join(w for w in name.split()
+                                    if w.upper() not in _NON_PLAYER).strip()
+                if name:
+                    players.append({
+                        "number": int(m.group(3)),
+                        "position": m.group(2),
+                        "name": name,
+                    })
+        return players
+
     return {
-        "home": _extract_players(home_words),
-        "away": _extract_players(away_words),
+        "home": _extract_home(home_words),
+        "away": _extract_away(away_words),
     }
 
 
 def _parse_team_stats(page) -> dict:
-    """Page 2: key statistics (xG, possession, shots, passes)."""
+    """
+    Page 2: key statistics.
+
+    The two-column layout extracts as:
+        [home_value]          ← left column (home team)
+        [stat name]           ← centre
+        [away_value]          ← right column (away team)
+
+    So the number BEFORE each label is home, number AFTER is away.
+    """
     text = page.get_text("text")
     stats: dict = {}
 
-    # xG: "xG (Expected Goals) 0.99 1.33"
-    xg = re.search(
-        r'xG[^\d]*([\d.]+)\s+([\d.]+)', text, re.IGNORECASE
-    )
+    # xG — value before label = home, value after label = away
+    # Raw: "1.07\nxG (Expected Goals)\n0.73\n"
+    xg = re.search(r'([\d.]+)\s*\n[^\n]*xG[^\n]*\n\s*([\d.]+)', text, re.IGNORECASE)
     if xg:
         stats["xg_home"] = float(xg.group(1))
         stats["xg_away"] = float(xg.group(2))
 
-    # Possession: "46.7 ... 45.2" near "Possession"
+    # Possession — "45.5%\n…Possession…\n16.4%"
     poss = re.search(
-        r'Possession[^\d]*([\d.]+)[^\d]+([\d.]+)', text, re.IGNORECASE
+        r'([\d.]+)%?\s*\n[^\n]*Possession[^\n]*\n[^\d]*([\d.]+)', text, re.IGNORECASE
     )
     if poss:
         stats["possession_home"] = float(poss.group(1))
         stats["possession_away"] = float(poss.group(2))
 
-    # Shots: "Attempts at Goal[^\d]+(\d+).*?(\d+)"
+    # Shots — "15 (4)\nAttempts at Goal (On Target)\n14 (3)"
     shots = re.search(
-        r'Attempts at Goal[^\d]+(\d+)[^\d]+(\d+)', text, re.IGNORECASE
+        r'(\d+)\s*\([^)]+\)\s*\n[^\n]*Attempts at Goal[^\n]*\n\s*(\d+)', text, re.IGNORECASE
     )
     if shots:
         stats["shots_home"] = int(shots.group(1))
         stats["shots_away"] = int(shots.group(2))
 
-    # Passes: "Total Passes[^\d]+(\d+)[^\d]+(\d+)"
+    # Passes — "476 (415)\nTotal Passes (Complete)\n411 (339)"
     passes = re.search(
-        r'Total Passes[^\d]+(\d+)[^\d]+(\d+)', text, re.IGNORECASE
+        r'(\d+)\s*\([^)]+\)\s*\n[^\n]*Total Passes[^\n]*\n\s*(\d+)', text, re.IGNORECASE
     )
     if passes:
         stats["passes_home"] = int(passes.group(1))
@@ -426,52 +483,71 @@ def _parse_team_stats(page) -> dict:
     return stats
 
 
+_OUTCOME_KEYWORDS = (
+    "On Target", "Off Target", "Incomplete", "Blocked", "Deflected"
+)
+_BODY_PARTS = ("Left Foot", "Right Foot", "Head", "Chest", "Knee")
+_DELIVERY_TYPES = ("Pass", "Cross", "Corner", "Freekick", "Free Kick",
+                   "Ball Progression", "Loose Ball", "Other", "Dribble",
+                   "Set Piece", "Direct")
+
+
 def _parse_shot_log_page(page, team: str) -> list[dict]:
     """
-    Shot log page: extract per-shot rows.
-    Columns: minute | number | player | outcome | body_part | delivery_type
+    Shot log page layout (one row per shot, 5 sequential text lines):
+        {minute}
+        {Player Name}
+        {Outcome}
+        {Body Part}
+        {Delivery Type}
+
+    The page header (Attempts at Goal / Belgium / Time / Player / Outcome …)
+    is stripped before processing.
     """
-    words = _page_words(page)
-    rows = _group_rows(words)
-    shots = []
-    for row in rows:
-        text = _row_text(row)
-        # First token should be a minute (1–120)
-        tokens = text.split()
-        if not tokens:
+    lines = [l.strip() for l in page.get_text("text").splitlines() if l.strip()]
+
+    # Drop header lines (contain column labels or page title)
+    _SKIP = {"Attempts at Goal", "Time", "Player", "Outcome", "Body Part",
+             "Delivery Type", "Belgium", "Egypt", "France", "Morocco"}
+    content: list[str] = []
+    for ln in lines:
+        skip = any(ln.startswith(s) or s == ln for s in _SKIP)
+        # Also skip the date/venue footer and standalone team name lines
+        if skip or re.match(r'^\d{1,2} \w+ 202', ln) or re.match(r'^[A-Z][a-z]+ Stadium', ln):
             continue
-        try:
-            minute = int(tokens[0])
+        content.append(ln)
+
+    shots: list[dict] = []
+    i = 0
+    while i < len(content):
+        # Look for a minute number on its own line
+        if re.match(r'^\d{1,3}$', content[i]):
+            minute = int(content[i])
             if not (1 <= minute <= 130):
+                i += 1
                 continue
-        except ValueError:
-            continue
+            # Peek ahead for the 4 remaining fields
+            player   = content[i + 1] if i + 1 < len(content) else ""
+            outcome  = content[i + 2] if i + 2 < len(content) else ""
+            body_    = content[i + 3] if i + 3 < len(content) else ""
+            delivery = content[i + 4] if i + 4 < len(content) else ""
 
-        # Second token: jersey number
-        if len(tokens) < 3:
-            continue
-        try:
-            number = int(tokens[1])
-        except ValueError:
-            continue
-
-        # Rest: split by known outcome keywords
-        rest = " ".join(tokens[2:])
-        # Outcomes contain phrases like "On Target - Goal", "Off Target", etc.
-        outcome_m = re.search(
-            r'(On Target[^A-Z]*|Off Target|Incomplete[^A-Z]*|Deflected[^A-Z]*)',
-            rest, re.IGNORECASE
-        )
-        outcome = outcome_m.group(0).strip() if outcome_m else ""
-        player = rest[:outcome_m.start()].strip() if outcome_m else rest
-
-        shots.append({
-            "minute": minute,
-            "number": number,
-            "player": player,
-            "team": team,
-            "outcome": outcome,
-        })
+            # Validate: outcome must contain a known keyword
+            if any(kw in outcome for kw in _OUTCOME_KEYWORDS):
+                shots.append({
+                    "minute": minute,
+                    "player": player,
+                    "team": team,
+                    "outcome": outcome,
+                    "body_part": body_,
+                    "delivery_type": delivery,
+                    "x": float("nan"),
+                    "y": float("nan"),
+                    "xg": float("nan"),
+                })
+                i += 5
+                continue
+        i += 1
 
     return shots
 

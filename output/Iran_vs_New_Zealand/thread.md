@@ -5,7 +5,7 @@
 
 🏆 FINAL | Iran 2–2 New Zealand
 
-xG: Iran 1.05 – 0.85 New Zealand
+xG: Iran 1.85 – 1.47 New Zealand
 Narrow xG edge: Iran
 
 Full thread 🧵👇
@@ -17,18 +17,18 @@ Full thread 🧵👇
 ## Tweet 2
 
 📊 xG breakdown
-Iran: 1.05 xG from 14 shots
-New Zealand: 0.85 xG from 8 shots
+Iran: 1.85 xG from 17 shots
+New Zealand: 1.47 xG from 14 shots
 
 Both teams created chances but quality was key.
 
-*125 / 280 chars*
+*126 / 280 chars*
 
 ---
 
 ## Tweet 3
 
-📈 Clinical night for New Zealand: 2g from 0.85 xG (+1.15 vs expectation). Every chance taken counted.
+📈 Clinical night for New Zealand: 2g from 0.70 xG (+1.30 vs expectation). Every chance taken counted.
 
 *101 / 280 chars*
 
@@ -36,15 +36,15 @@ Both teams created chances but quality was key.
 
 ## Tweet 4
 
-🎯 Best chance: 7 (Iran) had a 0.05 xG opportunity in the 11′ — didn't score.
+🎯 Best chance: Arya YOUSEFI (Iran) had a 0.05 xG opportunity in the 5′ — didn't score.
 
-*76 / 280 chars*
+*86 / 280 chars*
 
 ---
 
 ## Tweet 5
 
-⚡ Shots on target  ·  Iran: 0/21  |  New Zealand: 0/17
+⚡ Shots on target  ·  Iran: 4/17  |  New Zealand: 6/14
 
 *54 / 280 chars*
 

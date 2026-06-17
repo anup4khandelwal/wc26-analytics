@@ -169,7 +169,12 @@ def _pos_to_xy(pos: str) -> tuple[float, float]:
 
 
 def _lineup_positions(lineups: Optional[pd.DataFrame], team: str) -> pd.DataFrame:
-    """Return DataFrame with columns player, pos, x, y for a team."""
+    """Return DataFrame with columns player, pos, x, y for a team.
+
+    Handles both detailed FBref positions (e.g. LCB, RDM) and the coarser
+    FIFA PDF positions (GK / DF / MF / FW) by spreading each group evenly
+    across the y-axis in a sensible formation shape.
+    """
     if lineups is None or lineups.empty:
         return pd.DataFrame(columns=["player", "pos", "x", "y"])
 
@@ -183,24 +188,159 @@ def _lineup_positions(lineups: Optional[pd.DataFrame], team: str) -> pd.DataFram
     df = lineups.copy()
     if team_c:
         df = df[df[team_c].astype(str).str.lower().str.contains(team.lower(), na=False)]
+    if df.empty:
+        return pd.DataFrame(columns=["player", "pos", "x", "y"])
 
-    rows = []
+    # x-axis (depth): GK=5, DF=22, MF=50, FW=80
+    _BROAD_X = {"GK": 5, "DF": 22, "MF": 50, "FW": 80}
+
+    def _broad(pos: str) -> str:
+        p = str(pos).upper().strip()
+        if p == "GK":
+            return "GK"
+        if p in ("DF", "RB", "LB", "CB", "RCB", "LCB", "RWB", "LWB"):
+            return "DF"
+        if p in ("MF", "CM", "CDM", "CAM", "RM", "LM", "RDM", "LDM",
+                 "RCM", "LCM", "RAM", "LAM"):
+            return "MF"
+        return "FW"
+
+    # Group players by broad position
+    groups: dict[str, list[str]] = {"GK": [], "DF": [], "MF": [], "FW": []}
     for _, row in df.iterrows():
-        pos = str(row[pos_c]).upper().strip() if pos_c else "CM"
-        x, y = _pos_to_xy(pos)
-        rows.append({"player": row[name_c], "pos": pos, "x": x, "y": y})
+        pos = str(row[pos_c]).upper().strip() if pos_c else "MF"
+        grp = _broad(pos)
+        groups[grp].append(str(row[name_c]))
 
-    return pd.DataFrame(rows)
+    rows: list[dict] = []
+    for grp, players in groups.items():
+        n = len(players)
+        if n == 0:
+            continue
+        x_val = _BROAD_X[grp]
+        # Spread evenly on y-axis with a margin (15–85)
+        ys = np.linspace(15, 85, n) if n > 1 else [50.0]
+        for player, y_val in zip(players, ys):
+            rows.append({"player": player, "pos": grp, "x": float(x_val), "y": float(y_val)})
+
+    return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["player", "pos", "x", "y"])
 
 
 # ── 1. shot map ───────────────────────────────────────────────────────────────
 
-def shot_map(match: dict, output_dir: Path, handle: str = "@anup4khandelwal") -> Path:
+def _shot_outcomes_chart(
+    match: dict, output_dir: Path, handle: str
+) -> Path:
     """
-    Two attacking half-pitches side by side.
-    Dots sized by xG; gold stars for goals.
+    Fallback when shot x/y coordinates are unavailable (FIFA PDF source).
+    Renders a grouped bar chart of shot outcomes + team xG side by side.
     """
     shots_raw = match.get("shots")
+    home, away = _team_names(match)
+    sc = _score(match)
+    team_stats = match.get("meta", {}).get("team_stats", {})
+
+    CATEGORIES = ["Goal", "On Target", "Off Target", "Blocked", "Incomplete"]
+
+    def _count_outcomes(team_name: str) -> dict[str, int]:
+        counts = {k: 0 for k in CATEGORIES}
+        if shots_raw is None or shots_raw.empty:
+            return counts
+        outc_c = _col(shots_raw, _OUTCOME_CANDIDATES)
+        team_c = _col(shots_raw, _TEAM_CANDIDATES)
+        if outc_c is None:
+            return counts
+        ts = shots_raw
+        if team_c is not None:
+            ts = shots_raw[shots_raw[team_c].astype(str).str.lower()
+                           .str.contains(team_name.lower(), na=False)]
+        for _, row in ts.iterrows():
+            outcome = str(row[outc_c]).lower()
+            if "goal" in outcome:
+                counts["Goal"] += 1
+            elif "on target" in outcome or "saved" in outcome:
+                counts["On Target"] += 1
+            elif "off target" in outcome or "off" in outcome:
+                counts["Off Target"] += 1
+            elif "blocked" in outcome or "block" in outcome:
+                counts["Blocked"] += 1
+            elif "incomplete" in outcome or "deflected" in outcome:
+                counts["Incomplete"] += 1
+        return counts
+
+    h_counts = _count_outcomes(home)
+    a_counts = _count_outcomes(away)
+
+    fig, axes = plt.subplots(1, 2, figsize=(FIG_W, FIG_H), facecolor=BG)
+    fig.subplots_adjust(left=0.06, right=0.97, top=0.82, bottom=0.14, wspace=0.28)
+
+    CAT_COLORS = {
+        "Goal":       GOAL_C,
+        "On Target":  HOME_C,
+        "Off Target": AWAY_C,
+        "Blocked":    "#8ecae6",
+        "Incomplete": MUTED,
+    }
+
+    for ax, team, counts, color, total_shots_key, xg_key in [
+        (axes[0], home, h_counts, HOME_C, "shots_home", "xg_home"),
+        (axes[1], away, a_counts, AWAY_C, "shots_away", "xg_away"),
+    ]:
+        ax.set_facecolor(BG)
+        for sp in ax.spines.values():
+            sp.set_visible(False)
+        ax.tick_params(colors=TEXT, labelsize=T_LABEL)
+        ax.yaxis.set_visible(False)
+
+        bars = [counts[c] for c in CATEGORIES]
+        bar_colors = [CAT_COLORS[c] for c in CATEGORIES]
+        y_pos = range(len(CATEGORIES))
+
+        rects = ax.barh(y_pos, bars, color=bar_colors, height=0.55,
+                        edgecolor=BG, linewidth=1.5)
+        for rect, val in zip(rects, bars):
+            if val > 0:
+                ax.text(val + 0.1, rect.get_y() + rect.get_height() / 2,
+                        str(val), va="center", ha="left",
+                        color=TEXT, fontsize=T_LABEL, fontweight="bold")
+
+        ax.set_yticks(list(y_pos))
+        ax.set_yticklabels(CATEGORIES, fontsize=T_LABEL, color=TEXT)
+        ax.set_xlim(0, max(max(bars) + 2, 5))
+
+        total = team_stats.get(total_shots_key, sum(bars))
+        xg = team_stats.get(xg_key, 0.0)
+        goals = sc["home"] if team == home else sc["away"]
+        subtitle = f"{goals}g  ·  {total} shots  ·  xG {xg:.2f}"
+        ax.set_title(team, color=color, fontsize=T_LABEL + 4, fontweight="bold", pad=8)
+        ax.set_xlabel(subtitle, color=MUTED, fontsize=T_TICK)
+
+    title = f"{home}  {sc['home']}–{sc['away']}  {away}  —  Shots"
+    fig.suptitle(title, color=TEXT, fontsize=T_TITLE, fontweight="bold", y=0.95)
+    _brand(fig, handle)
+
+    path = output_dir / _match_key(match) / "shot_map.png"
+    return _save(fig, path)
+
+
+def shot_map(match: dict, output_dir: Path, handle: str = "@anup4khandelwal") -> Path:
+    """
+    Two attacking half-pitches with shots sized by xG.
+    Falls back to a shot-outcomes bar chart when coordinates are unavailable
+    (e.g. FIFA PDF source, which has no x/y data).
+    """
+    shots_raw = match.get("shots")
+
+    # Detect whether we have real x/y coordinates
+    has_coords = False
+    if shots_raw is not None and not shots_raw.empty:
+        xc = _col(shots_raw, _X_CANDIDATES)
+        if xc is not None:
+            has_coords = shots_raw[xc].notna().any()
+
+    if not has_coords:
+        return _shot_outcomes_chart(match, output_dir, handle)
+
     home, away = _team_names(match)
     sc = _score(match)
     title = f"{home}  {sc['home']}–{sc['away']}  {away}"
@@ -233,41 +373,23 @@ def shot_map(match: dict, output_dir: Path, handle: str = "@anup4khandelwal") ->
             regular = team_shots[~team_shots["is_goal"]]
             goals = team_shots[team_shots["is_goal"]]
 
-            # missed / saved shots
             pitch.scatter(
-                regular["norm_x"].fillna(85),
-                regular["norm_y"].fillna(50),
+                regular["norm_x"], regular["norm_y"],
                 s=(regular["norm_xg"].clip(0.01, 1) * 600 + 50),
-                c=color,
-                alpha=0.55,
-                edgecolors=BG,
-                linewidths=0.8,
-                zorder=5,
-                ax=ax,
+                c=color, alpha=0.55, edgecolors=BG, linewidths=0.8, zorder=5, ax=ax,
             )
-            # goals
             if not goals.empty:
                 pitch.scatter(
-                    goals["norm_x"].fillna(95),
-                    goals["norm_y"].fillna(50),
+                    goals["norm_x"], goals["norm_y"],
                     s=(goals["norm_xg"].clip(0.01, 1) * 900 + 200),
-                    c=GOAL_C,
-                    marker="*",
-                    edgecolors=BG,
-                    linewidths=0.5,
-                    zorder=6,
-                    ax=ax,
+                    c=GOAL_C, marker="*", edgecolors=BG, linewidths=0.5, zorder=6, ax=ax,
                 )
         else:
-            ax.text(
-                50, 75, "No shot data",
-                ha="center", va="center", fontsize=T_LABEL,
-                color=MUTED, transform=ax.transData,
-            )
+            ax.text(50, 75, "No shot data", ha="center", va="center",
+                    fontsize=T_LABEL, color=MUTED)
 
         ax.set_title(label, color=color, fontsize=T_LABEL + 2, fontweight="bold", pad=8)
 
-    # legend
     legend_elements = [
         Line2D([0], [0], marker="o", color="none", markerfacecolor=HOME_C,
                markersize=10, label="Shot (home)", alpha=0.8),
@@ -294,10 +416,16 @@ def shot_map(match: dict, output_dir: Path, handle: str = "@anup4khandelwal") ->
 # ── 2. xG race ────────────────────────────────────────────────────────────────
 
 def xg_race(match: dict, output_dir: Path, handle: str = "@anup4khandelwal") -> Path:
-    """Cumulative xG step chart with goal markers."""
+    """
+    Cumulative xG step chart with goal markers.
+
+    When per-shot xG is unavailable (FIFA PDF source), distributes the team's
+    total xG evenly across their shots so the totals are still correct.
+    """
     shots_raw = match.get("shots")
     home, away = _team_names(match)
     sc = _score(match)
+    team_stats = match.get("meta", {}).get("team_stats", {})
 
     fig, ax = plt.subplots(figsize=(FIG_W, FIG_H), facecolor=BG)
     ax.set_facecolor(BG)
@@ -306,15 +434,28 @@ def xg_race(match: dict, output_dir: Path, handle: str = "@anup4khandelwal") -> 
     if shots_raw is not None and not shots_raw.empty:
         shots = _norm_shots(shots_raw)
 
-        for team, color, label_suffix in [
-            (home, HOME_C, f"  {sc['home']}g"),
-            (away, AWAY_C, f"  {sc['away']}g"),
+        # Detect whether we have real per-shot xG values
+        # (norm_xg is all 0.05 default when no xG column was present)
+        xgc = _col(shots_raw, _XG_CANDIDATES)
+        has_real_xg = (xgc is not None and
+                       shots_raw[xgc].notna().any() and
+                       shots_raw[xgc].astype(float).sum() > 0)
+
+        for team, color, label_suffix, ts_key in [
+            (home, HOME_C, f"  {sc['home']}g", "xg_home"),
+            (away, AWAY_C, f"  {sc['away']}g", "xg_away"),
         ]:
             ts = shots[shots["_team"].str.lower().str.contains(team.lower(), na=False)]
-            ts = ts.sort_values("_minute")
+            ts = ts.sort_values("_minute").copy()
 
             if ts.empty:
                 continue
+
+            # When no real per-shot xG: scale uniform xG to match FIFA team total
+            if not has_real_xg and ts_key in team_stats:
+                total_xg = float(team_stats[ts_key])
+                n = len(ts)
+                ts["norm_xg"] = total_xg / n if n else 0.0
 
             minutes = [0.0] + ts["_minute"].tolist() + [95.0]
             cum_xg = [0.0] + ts["norm_xg"].cumsum().tolist()
@@ -325,16 +466,12 @@ def xg_race(match: dict, output_dir: Path, handle: str = "@anup4khandelwal") -> 
 
             # goal markers
             goals = ts[ts["is_goal"]]
-            goal_cum = 0.0
             for _, row in goals.iterrows():
                 prev = ts[ts["_minute"] <= row["_minute"]]["norm_xg"].sum()
-                goal_cum = prev
                 ax.axvline(row["_minute"], color=GOAL_C, linestyle="--",
                            linewidth=1, alpha=0.6)
-                ax.text(
-                    row["_minute"] + 0.5, goal_cum + 0.02,
-                    "⚽", fontsize=13, color=GOAL_C, va="bottom",
-                )
+                ax.text(row["_minute"] + 0.5, prev + 0.02,
+                        "⚽", fontsize=13, color=GOAL_C, va="bottom")
     else:
         ax.text(0.5, 0.5, "No shot data available", ha="center", va="center",
                 fontsize=T_LABEL, color=MUTED, transform=ax.transAxes)

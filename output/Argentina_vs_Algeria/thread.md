@@ -5,7 +5,7 @@
 
 🏆 FINAL | Argentina 3–0 Algeria
 
-xG: Argentina 1.05 – 0.05 Algeria
+xG: Argentina 1.58 – 0.41 Algeria
 Dominant xG edge: Argentina
 
 Full thread 🧵👇
@@ -17,18 +17,18 @@ Full thread 🧵👇
 ## Tweet 2
 
 📊 xG breakdown
-Argentina: 1.05 xG from 7 shots
-Algeria: 0.05 xG from 1 shots
+Argentina: 1.58 xG from 10 shots
+Algeria: 0.41 xG from 7 shots
 
 Argentina were clearly the better side on the numbers.
 
-*132 / 280 chars*
+*133 / 280 chars*
 
 ---
 
 ## Tweet 3
 
-📈 Clinical night for Argentina: 3g from 1.05 xG (+1.95 vs expectation). Every chance taken counted.
+📈 Clinical night for Argentina: 3g from 0.85 xG (+2.15 vs expectation). Every chance taken counted.
 
 *99 / 280 chars*
 
@@ -36,15 +36,15 @@ Argentina were clearly the better side on the numbers.
 
 ## Tweet 4
 
-🎯 Best chance: 8 (Argentina) had a 0.05 xG opportunity in the 1′ — didn't score.
+🎯 Best chance: Lionel MESSI (Argentina) had a 0.05 xG opportunity in the 16′ — scored.
 
-*80 / 280 chars*
+*86 / 280 chars*
 
 ---
 
 ## Tweet 5
 
-⚡ Shots on target  ·  Argentina: 0/21  |  Algeria: 0/1
+⚡ Shots on target  ·  Argentina: 6/17  |  Algeria: 0/0
 
 *54 / 280 chars*
 

@@ -5,32 +5,32 @@
 
 🏆 FINAL | Saudi Arabia 1–1 Uruguay
 
-xG: Saudi Arabia 0.40 – 1.90 Uruguay
-Dominant xG edge: Uruguay
+xG: Saudi Arabia 1.06 – 1.50 Uruguay
+Narrow xG edge: Uruguay
 
 Full thread 🧵👇
 
-*114 / 280 chars*
+*112 / 280 chars*
 
 ---
 
 ## Tweet 2
 
 📊 xG breakdown
-Saudi Arabia: 0.40 xG from 27 shots
-Uruguay: 1.90 xG from 10 shots
+Saudi Arabia: 1.06 xG from 7 shots
+Uruguay: 1.50 xG from 27 shots
 
 Uruguay were clearly the better side on the numbers.
 
-*135 / 280 chars*
+*134 / 280 chars*
 
 ---
 
 ## Tweet 3
 
-📈 Costly miss for Uruguay: only 1g from 1.90 xG (-0.90 vs expectation). The xG says they deserved more.
+📈 Clinical night for Saudi Arabia: 1g from 0.35 xG (+0.65 vs expectation). Every chance taken counted.
 
-*103 / 280 chars*
+*102 / 280 chars*
 
 ---
 
@@ -44,9 +44,9 @@ Uruguay were clearly the better side on the numbers.
 
 ## Tweet 5
 
-⚡ Shots on target  ·  Saudi Arabia: 0/8  |  Uruguay: 0/38
+⚡ Shots on target  ·  Saudi Arabia: 3/7  |  Uruguay: 10/27
 
-*57 / 280 chars*
+*58 / 280 chars*
 
 ---
 

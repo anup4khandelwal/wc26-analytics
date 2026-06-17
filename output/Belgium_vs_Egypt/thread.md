@@ -5,38 +5,38 @@
 
 🏆 FINAL | Belgium 1–1 Egypt
 
-xG: Belgium 0.90 – 0.95 Egypt
-Narrow xG edge: Egypt
+xG: Belgium 1.07 – 0.73 Egypt
+Narrow xG edge: Belgium
 
 Full thread 🧵👇
 
-*96 / 280 chars*
+*98 / 280 chars*
 
 ---
 
 ## Tweet 2
 
 📊 xG breakdown
-Belgium: 0.90 xG from 14 shots
-Egypt: 0.95 xG from 3 shots
+Belgium: 1.07 xG from 15 shots
+Egypt: 0.73 xG from 14 shots
 
 Both teams created chances but quality was key.
 
-*122 / 280 chars*
+*123 / 280 chars*
 
 ---
 
 ## Tweet 3
 
-📈 Best chance: 3 (Belgium) had a 0.05 xG opportunity in the 8′ — didn't score.
+📈 Best chance: Leandro TROSSARD (Belgium) had a 0.05 xG opportunity in the 5′ — didn't score.
 
-*78 / 280 chars*
+*93 / 280 chars*
 
 ---
 
 ## Tweet 4
 
-🎯 Shots on target  ·  Belgium: 0/18  |  Egypt: 0/19
+🎯 Shots on target  ·  Belgium: 3/15  |  Egypt: 4/14
 
 *51 / 280 chars*
 

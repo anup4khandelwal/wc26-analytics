@@ -227,11 +227,16 @@ def compose_thread(
         a_mask = shots_norm["_team"].str.lower().str.contains(away.lower(), na=False)
         h_shots = shots_norm[h_mask]
         a_shots = shots_norm[a_mask]
-        # Only override team_stats xG when per-shot xG is actually available
-        _h_xg_sum = h_shots["_xg"].sum()
-        _a_xg_sum = a_shots["_xg"].sum()
-        if _h_xg_sum > 0 or _a_xg_sum > 0:
-            h_xg, a_xg = _h_xg_sum, _a_xg_sum
+        # Only override team_stats xG when real per-shot xG values exist (not NaN defaults)
+        xgc = _col(shots_raw, ["xg", "psxg", "expected_goals", "xGoal", "xg_shot"])
+        _has_real_xg = (
+            xgc is not None
+            and shots_raw[xgc].notna().any()
+            and pd.to_numeric(shots_raw[xgc], errors="coerce").sum() > 0
+        )
+        if _has_real_xg:
+            h_xg = h_shots["_xg"].sum()
+            a_xg = a_shots["_xg"].sum()
         if h_shots_n == 0:
             h_shots_n = len(h_shots)
         if a_shots_n == 0:

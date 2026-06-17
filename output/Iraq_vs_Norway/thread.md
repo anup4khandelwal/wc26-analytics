@@ -5,30 +5,30 @@
 
 🏆 FINAL | Iraq 1–4 Norway
 
-xG: Iraq 0.75 – 0.75 Norway
-Narrow xG edge: Iraq
+xG: Iraq 1.20 – 2.41 Norway
+Dominant xG edge: Norway
 
 Full thread 🧵👇
 
-*91 / 280 chars*
+*95 / 280 chars*
 
 ---
 
 ## Tweet 2
 
 📊 xG breakdown
-Iraq: 0.75 xG from 11 shots
-Norway: 0.75 xG from 5 shots
+Iraq: 1.20 xG from 11 shots
+Norway: 2.41 xG from 11 shots
 
-Both teams created chances but quality was key.
+Norway were clearly the better side on the numbers.
 
-*120 / 280 chars*
+*125 / 280 chars*
 
 ---
 
 ## Tweet 3
 
-📈 Clinical night for Norway: 4g from 0.75 xG (+3.25 vs expectation). Every chance taken counted.
+📈 Clinical night for Norway: 4g from 0.55 xG (+3.45 vs expectation). Every chance taken counted.
 
 *96 / 280 chars*
 
@@ -36,15 +36,15 @@ Both teams created chances but quality was key.
 
 ## Tweet 4
 
-🎯 Best chance: 11 (Iraq) had a 0.05 xG opportunity in the 7′ — didn't score.
+🎯 Best chance: AYMEN HUSSEIN (Iraq) had a 0.05 xG opportunity in the 4′ — didn't score.
 
-*76 / 280 chars*
+*87 / 280 chars*
 
 ---
 
 ## Tweet 5
 
-⚡ Shots on target  ·  Iraq: 0/15  |  Norway: 0/15
+⚡ Shots on target  ·  Iraq: 1/11  |  Norway: 4/11
 
 *49 / 280 chars*
 

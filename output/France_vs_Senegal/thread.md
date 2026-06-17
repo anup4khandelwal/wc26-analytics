@@ -5,30 +5,30 @@
 
 🏆 FINAL | France 3–1 Senegal
 
-xG: France 0.75 – 0.35 Senegal
-Narrow xG edge: France
+xG: France 1.62 – 0.39 Senegal
+Dominant xG edge: France
 
 Full thread 🧵👇
 
-*99 / 280 chars*
+*101 / 280 chars*
 
 ---
 
 ## Tweet 2
 
 📊 xG breakdown
-France: 0.75 xG from 6 shots
-Senegal: 0.35 xG from 2 shots
+France: 1.62 xG from 11 shots
+Senegal: 0.39 xG from 6 shots
 
 France were clearly the better side on the numbers.
 
-*126 / 280 chars*
+*127 / 280 chars*
 
 ---
 
 ## Tweet 3
 
-📈 Clinical night for France: 3g from 0.75 xG (+2.25 vs expectation). Every chance taken counted.
+📈 Clinical night for France: 3g from 0.55 xG (+2.45 vs expectation). Every chance taken counted.
 
 *96 / 280 chars*
 
@@ -36,15 +36,15 @@ France were clearly the better side on the numbers.
 
 ## Tweet 4
 
-🎯 Best chance: 9 (France) had a 0.05 xG opportunity in the 3′ — didn't score.
+🎯 Best chance: Ousmane DEMBELE (France) had a 0.05 xG opportunity in the 18′ — didn't score.
 
-*77 / 280 chars*
+*92 / 280 chars*
 
 ---
 
 ## Tweet 5
 
-⚡ Shots on target  ·  France: 0/15  |  Senegal: 0/7
+⚡ Shots on target  ·  France: 8/11  |  Senegal: 2/6
 
 *51 / 280 chars*
 
