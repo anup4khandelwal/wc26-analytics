@@ -381,23 +381,28 @@ def fetch_match_report(
             logger.warning("FIFA PDF source failed: %s", exc)
 
     # ── source 2: FBref (blocked on GitHub Actions; works locally) ───────────
-    try:
-        if fbref_id is None and home and away:
-            fbref_id = _find_game_id(home, away, season)
+    # Skip entirely when FIFA PDF already gave a valid score — avoids 4-minute
+    # retry storm on cloud runners where FBref is Cloudflare-blocked.
+    _fifa_has_data = score is not None and (score.get("home", 0) or score.get("away", 0)
+                                             or (shots is not None and not shots.empty))
+    if not _fifa_has_data:
+        try:
+            if fbref_id is None and home and away:
+                fbref_id = _find_game_id(home, away, season)
+                if fbref_id:
+                    logger.info("Resolved FBref game_id: %s", fbref_id)
             if fbref_id:
-                logger.info("Resolved FBref game_id: %s", fbref_id)
-        if fbref_id:
-            fbref_shots = _fetch_shots(fbref_id, season)
-            if fbref_shots is not None and not fbref_shots.empty:
-                shots = fbref_shots  # richer: has x/y/xg
-            fbref_stats = _fetch_player_stats(fbref_id, season)
-            if fbref_stats is not None and not fbref_stats.empty:
-                player_stats = fbref_stats
-            fbref_lineups = _fetch_lineups(fbref_id, season)
-            if fbref_lineups is not None and not fbref_lineups.empty:
-                lineups = fbref_lineups
-    except Exception as exc:
-        logger.warning("FBref unavailable (%s)", exc)
+                fbref_shots = _fetch_shots(fbref_id, season)
+                if fbref_shots is not None and not fbref_shots.empty:
+                    shots = fbref_shots  # richer: has x/y/xg
+                fbref_stats = _fetch_player_stats(fbref_id, season)
+                if fbref_stats is not None and not fbref_stats.empty:
+                    player_stats = fbref_stats
+                fbref_lineups = _fetch_lineups(fbref_id, season)
+                if fbref_lineups is not None and not fbref_lineups.empty:
+                    lineups = fbref_lineups
+        except Exception as exc:
+            logger.warning("FBref unavailable (%s)", exc)
 
     # ── source 3: StatsBomb open data (activates when WC26 published) ────────
     if home and away:
