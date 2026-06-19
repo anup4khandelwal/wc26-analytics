@@ -157,7 +157,8 @@ def _run_match(home: str, away: str, fbref_id: str | None) -> bool:
             logger.warning("  pass_network (%s) failed: %s", team, exc)
 
     for fn_name in ["match_timeline", "shot_creation", "first_second_half",
-                    "shot_conversion_table", "player_ratings_card", "momentum_chart"]:
+                    "shot_conversion_table", "player_ratings_card", "momentum_chart",
+                    "half_comparison", "team_style_radar", "milestone_card"]:
         try:
             p = getattr(viz, fn_name)(match, OUTPUT_DIR, handle=HANDLE)
             viz_paths.append(p)

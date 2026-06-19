@@ -74,11 +74,15 @@ def main() -> None:
         logger.error("Supply --fbref-id OR both --home and --away")
         sys.exit(1)
 
-    charts_req = (
-        {"shot_map", "xg_race", "pass_network", "pizza", "defensive"}
-        if args.charts == "all"
-        else {c.strip() for c in args.charts.split(",")}
-    )
+    _ALL_CHARTS = {
+        "shot_map", "xg_race", "pass_network", "pizza", "defensive",
+        "match_timeline", "shot_creation", "first_second_half",
+        "shot_conversion_table", "player_ratings_card", "momentum_chart",
+        "half_comparison", "team_style_radar", "milestone_card",
+    }
+    charts_req = _ALL_CHARTS if args.charts == "all" else {
+        c.strip() for c in args.charts.split(",")
+    }
 
     # ── fetch ──────────────────────────────────────────────────────────────────
     from wc26.fetch import fetch_match_report, fetch_season_stats
@@ -146,6 +150,21 @@ def main() -> None:
             p = viz.defensive_actions(player, match, output_dir, handle=args.handle)
             viz_paths.append(p)
             logger.info("  → %s", p)
+
+    _SIMPLE_CHARTS = [
+        "match_timeline", "shot_creation", "first_second_half",
+        "shot_conversion_table", "player_ratings_card", "momentum_chart",
+        "half_comparison", "team_style_radar", "milestone_card",
+    ]
+    for fn_name in _SIMPLE_CHARTS:
+        if fn_name in charts_req:
+            logger.info("Generating %s…", fn_name)
+            try:
+                p = getattr(viz, fn_name)(match, output_dir, handle=args.handle)
+                viz_paths.append(p)
+                logger.info("  → %s", p)
+            except Exception as exc:
+                logger.warning("  %s failed: %s", fn_name, exc)
 
     # ── thread ─────────────────────────────────────────────────────────────────
     if not args.no_thread:

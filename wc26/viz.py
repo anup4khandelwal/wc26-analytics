@@ -1747,3 +1747,327 @@ def defensive_actions(
     safe_name = player_name.replace(" ", "_")
     path = output_dir / _match_key(match) / f"def_actions_{safe_name}.png"
     return _save(fig, path)
+
+def half_comparison(
+    match: dict,
+    output_dir: Path,
+    handle: str = "@anup4khandelwal",
+) -> Path:
+    """
+    Spine / butterfly chart: 1st vs 2nd half stats for both teams.
+    Home bars extend left, away bars extend right.
+    """
+    shots_raw = match.get("shots")
+    home, away = _team_names(match)
+    sc = _score(match)
+
+    METRICS = ["Shots", "On Target", "Goals"]
+
+    def _half_data(team_name: str) -> dict:
+        result = {m: {"H1": 0, "H2": 0} for m in METRICS}
+        if shots_raw is None or shots_raw.empty:
+            return result
+        shots = _norm_shots(shots_raw)
+        tc = _col(shots, _TEAM_CANDIDATES)
+        ts = shots if not tc else shots[
+            shots[tc].astype(str).str.lower().str.contains(team_name.lower(), na=False)
+        ]
+        if ts.empty:
+            return result
+        h1, h2 = ts[ts["_minute"] <= 45], ts[ts["_minute"] > 45]
+        result["Shots"]["H1"] = len(h1)
+        result["Shots"]["H2"] = len(h2)
+        result["Goals"]["H1"] = int(h1["is_goal"].sum())
+        result["Goals"]["H2"] = int(h2["is_goal"].sum())
+        outc_c = _col(ts, _OUTCOME_CANDIDATES)
+        if outc_c:
+            pat = "on target|saved|goal"
+            result["On Target"]["H1"] = int(
+                h1[outc_c].astype(str).str.lower().str.contains(pat, na=False).sum()
+            )
+            result["On Target"]["H2"] = int(
+                h2[outc_c].astype(str).str.lower().str.contains(pat, na=False).sum()
+            )
+        return result
+
+    h_data = _half_data(home)
+    a_data = _half_data(away)
+
+    fig, axes = plt.subplots(1, 2, figsize=(FIG_W, FIG_H), facecolor=BG)
+    fig.subplots_adjust(left=0.04, right=0.96, top=0.84, bottom=0.12, wspace=0.10)
+
+    for ax, half, half_label in [
+        (axes[0], "H1", "1st Half  (0–45′)"),
+        (axes[1], "H2", "2nd Half  (45+–90′)"),
+    ]:
+        ax.set_facecolor(BG)
+        for sp in ax.spines.values():
+            sp.set_visible(False)
+
+        h_vals = [h_data[m][half] for m in METRICS]
+        a_vals = [a_data[m][half] for m in METRICS]
+        max_val = max(max(h_vals), max(a_vals), 2)
+        y_pos = np.arange(len(METRICS))
+
+        ax.barh(y_pos + 0.18, [-v for v in h_vals], height=0.32,
+                color=HOME_C, alpha=0.85, edgecolor=BG, zorder=3)
+        ax.barh(y_pos - 0.18, a_vals, height=0.32,
+                color=AWAY_C, alpha=0.85, edgecolor=BG, zorder=3)
+
+        for i, (hv, av) in enumerate(zip(h_vals, a_vals)):
+            ax.text(-(hv + 0.3), i + 0.18, str(hv),
+                    va="center", ha="right",
+                    color=HOME_C if hv else MUTED,
+                    fontsize=T_LABEL + 2, fontweight="bold")
+            ax.text(av + 0.3, i - 0.18, str(av),
+                    va="center", ha="left",
+                    color=AWAY_C if av else MUTED,
+                    fontsize=T_LABEL + 2, fontweight="bold")
+
+        for i, m in enumerate(METRICS):
+            ax.text(0, i, m, va="center", ha="center", color=TEXT,
+                    fontsize=T_TICK, fontweight="bold",
+                    bbox=dict(boxstyle="round,pad=0.25", facecolor=BG,
+                              edgecolor=GRID_C, linewidth=0.8), zorder=5)
+
+        ax.axvline(0, color=GRID_C, linewidth=1.2, zorder=2)
+        ax.set_xlim(-max_val - 2.5, max_val + 2.5)
+        ax.set_ylim(-0.7, len(METRICS) - 0.2)
+        ax.set_yticks([])
+        ax.tick_params(axis="x", colors=MUTED, labelsize=T_TICK - 1)
+
+        ax.text(-(max_val + 2.2), len(METRICS) - 0.35, home,
+                color=HOME_C, fontsize=T_TICK, fontweight="bold", ha="left")
+        ax.text(max_val + 2.2, len(METRICS) - 0.35, away,
+                color=AWAY_C, fontsize=T_TICK, fontweight="bold", ha="right")
+
+        ax.set_title(half_label, color=TEXT, fontsize=T_LABEL + 4,
+                     fontweight="bold", pad=12)
+
+    title = f"{home}  {sc['home']}–{sc['away']}  {away}  —  Half by Half"
+    fig.suptitle(title, color=TEXT, fontsize=T_TITLE, fontweight="bold", y=0.95)
+    _brand(fig, handle)
+
+    path = output_dir / _match_key(match) / "half_comparison.png"
+    return _save(fig, path)
+
+
+# ── 13. team style radar ──────────────────────────────────────────────────────
+
+def team_style_radar(
+    match: dict,
+    output_dir: Path,
+    handle: str = "@anup4khandelwal",
+) -> Path:
+    """
+    Radar / spider chart comparing team styles across 5 dimensions.
+    Axes: Possession, Shots, xG, Passes, Finishing.
+    Each team's value is normalised to 0–10 relative to the match winner per axis.
+    """
+    home, away = _team_names(match)
+    sc = _score(match)
+    ts_raw = match.get("meta", {}).get("team_stats", {})
+
+    h_poss   = float(ts_raw.get("possession_home", 50))
+    a_poss   = float(ts_raw.get("possession_away", 50))
+    h_shots  = float(ts_raw.get("shots_home",  0))
+    a_shots  = float(ts_raw.get("shots_away",  0))
+    h_xg     = float(ts_raw.get("xg_home",     0))
+    a_xg     = float(ts_raw.get("xg_away",     0))
+    h_passes = float(ts_raw.get("passes_home", 0))
+    a_passes = float(ts_raw.get("passes_away", 0))
+    h_goals  = float(sc.get("home", 0))
+    a_goals  = float(sc.get("away", 0))
+
+    h_finish = h_goals / h_shots * 100 if h_shots > 0 else 0.0
+    a_finish = a_goals / a_shots * 100 if a_shots > 0 else 0.0
+
+    CATS = ["Possession", "Shots", "xG", "Passes", "Finishing"]
+    raw_pairs = [
+        (h_poss,   a_poss),
+        (h_shots,  a_shots),
+        (h_xg,     a_xg),
+        (h_passes, a_passes),
+        (h_finish, a_finish),
+    ]
+
+    def _rel(h: float, a: float) -> tuple[float, float]:
+        mx = max(h, a)
+        if mx <= 0:
+            return 5.0, 5.0
+        return round(h / mx * 10, 2), round(a / mx * 10, 2)
+
+    h_norm = [_rel(h, a)[0] for h, a in raw_pairs]
+    a_norm = [_rel(h, a)[1] for h, a in raw_pairs]
+
+    N = len(CATS)
+    angles = np.linspace(0, 2 * np.pi, N, endpoint=False).tolist()
+    h_vals = h_norm + h_norm[:1]
+    a_vals = a_norm + a_norm[:1]
+    angles_closed = angles + angles[:1]
+
+    fig = plt.figure(figsize=(FIG_W, FIG_H), facecolor=BG)
+    ax = fig.add_axes([0.15, 0.20, 0.70, 0.68], polar=True)
+    ax.set_facecolor(BG)
+
+    ax.set_rlim(0, 10)
+    ax.set_rgrids([2.5, 5.0, 7.5, 10.0], labels=[], angle=45)
+    ax.set_thetagrids(np.degrees(angles), labels=CATS,
+                      fontsize=T_LABEL, color=TEXT)
+    ax.tick_params(axis="y", colors=MUTED, labelsize=T_TICK - 2)
+    ax.yaxis.set_ticklabels([])
+    ax.grid(color=GRID_C, linewidth=0.8, linestyle="--", alpha=0.6)
+    ax.spines["polar"].set_color(GRID_C)
+
+    ax.plot(angles_closed, h_vals, color=HOME_C, linewidth=2.5, zorder=4)
+    ax.fill(angles_closed, h_vals, color=HOME_C, alpha=0.22, zorder=3)
+    ax.plot(angles_closed, a_vals, color=AWAY_C, linewidth=2.5, zorder=4)
+    ax.fill(angles_closed, a_vals, color=AWAY_C, alpha=0.22, zorder=3)
+
+    legend_elements = [
+        mpatches.Patch(
+            facecolor=HOME_C, alpha=0.6,
+            label=(f"{home}  {int(h_goals)}g · {h_poss:.0f}% poss · "
+                   f"{int(h_shots)} shots · {h_xg:.2f} xG"),
+        ),
+        mpatches.Patch(
+            facecolor=AWAY_C, alpha=0.6,
+            label=(f"{away}  {int(a_goals)}g · {a_poss:.0f}% poss · "
+                   f"{int(a_shots)} shots · {a_xg:.2f} xG"),
+        ),
+    ]
+    fig.legend(handles=legend_elements, loc="lower center",
+               bbox_to_anchor=(0.5, 0.04), ncol=1,
+               facecolor=BG, edgecolor=GRID_C, labelcolor=TEXT,
+               fontsize=T_TICK + 1)
+
+    title = f"{home}  {sc['home']}–{sc['away']}  {away}  —  Team Style"
+    fig.suptitle(title, color=TEXT, fontsize=T_TITLE, fontweight="bold", y=0.97)
+    _brand(fig, handle)
+
+    path = output_dir / _match_key(match) / "team_style_radar.png"
+    return _save(fig, path)
+
+
+# ── 14. milestone card ────────────────────────────────────────────────────────
+
+def milestone_card(
+    match: dict,
+    output_dir: Path,
+    handle: str = "@anup4khandelwal",
+) -> Path:
+    """
+    OptaJoe-style key stats card: big numbers with one-line context phrases.
+    Generates 4–5 facts from FIFA PMSR team_stats + shot log.
+    """
+    home, away = _team_names(match)
+    sc = _score(match)
+    ts_raw = match.get("meta", {}).get("team_stats", {})
+    shots_raw = match.get("shots")
+
+    h_goals  = int(sc.get("home", 0))
+    a_goals  = int(sc.get("away", 0))
+    h_xg     = float(ts_raw.get("xg_home",    0))
+    a_xg     = float(ts_raw.get("xg_away",    0))
+    h_shots  = int(ts_raw.get("shots_home",   0))
+    a_shots  = int(ts_raw.get("shots_away",   0))
+    h_poss   = float(ts_raw.get("possession_home", 0))
+    a_poss   = float(ts_raw.get("possession_away", 0))
+    h_passes = int(ts_raw.get("passes_home",  0))
+    a_passes = int(ts_raw.get("passes_away",  0))
+
+    # (number_text, color, context)
+    facts: list[tuple[str, str, str]] = []
+
+    total_goals = h_goals + a_goals
+    facts.append((
+        str(total_goals), GOAL_C,
+        f"goals  ·  {home} {h_goals}–{a_goals} {away}",
+    ))
+
+    total_xg = h_xg + a_xg
+    if total_xg > 0:
+        facts.append((
+            f"{total_xg:.2f}", "#8ecae6",
+            f"total xG  ·  {home} {h_xg:.2f}  vs  {away} {a_xg:.2f}",
+        ))
+
+    if h_poss + a_poss > 0:
+        dominant = home if h_poss >= a_poss else away
+        dom_poss = max(h_poss, a_poss)
+        facts.append((
+            f"{dom_poss:.0f}%",
+            HOME_C if dominant == home else AWAY_C,
+            f"possession for {dominant}",
+        ))
+
+    total_shots = h_shots + a_shots
+    if total_shots > 0:
+        facts.append((
+            str(total_shots), "#c77dff",
+            f"total shots  ·  {home} {h_shots}  vs  {away} {a_shots}",
+        ))
+
+    if h_passes + a_passes > 0:
+        facts.append((
+            str(h_passes + a_passes), "#ffd166",
+            f"passes  ·  {home} {h_passes}  vs  {away} {a_passes}",
+        ))
+
+    # First goal scorer from shot log
+    if shots_raw is not None and not shots_raw.empty:
+        shots_n = _norm_shots(shots_raw)
+        goals_df = shots_n[shots_n["is_goal"]].sort_values("_minute")
+        if not goals_df.empty:
+            row = goals_df.iloc[0]
+            minute = int(row["_minute"])
+            pc = _col(shots_raw, _PLAYER_CANDIDATES)
+            player = str(row[pc]).strip() if pc and pc in row.index else ""
+            lastname = player.split()[-1] if player else "—"
+            facts.append((
+                f"{minute}′", GOAL_C,
+                f"min — {lastname} opened the scoring",
+            ))
+
+    facts = facts[:5]
+    while len(facts) < 3:
+        facts.append(("—", MUTED, "No additional data available"))
+
+    n = len(facts)
+    fig, ax = plt.subplots(figsize=(FIG_W, FIG_H), facecolor=BG)
+    ax.set_facecolor(BG)
+    ax.axis("off")
+    fig.subplots_adjust(left=0.06, right=0.94, top=0.84, bottom=0.12)
+
+    y_top = 0.92
+    row_h = 0.84 / n
+
+    for i, (number, num_color, context) in enumerate(facts):
+        y = y_top - (i + 0.5) * row_h
+
+        ax.text(0.09, y, number,
+                transform=ax.transAxes, ha="center", va="center",
+                fontsize=38, fontweight="bold", color=num_color,
+                fontfamily="monospace")
+
+        ax.text(0.15, y, "—",
+                transform=ax.transAxes, ha="center", va="center",
+                fontsize=T_LABEL + 4, color=MUTED)
+
+        ctx = context[:78] + "…" if len(context) > 78 else context
+        ax.text(0.18, y, ctx,
+                transform=ax.transAxes, ha="left", va="center",
+                fontsize=T_SUB, color=TEXT)
+
+        if i < n - 1:
+            line_y = y_top - (i + 1) * row_h
+            ax.plot([0.03, 0.97], [line_y, line_y],
+                    transform=ax.transAxes,
+                    color=GRID_C, linewidth=0.8, zorder=1)
+
+    title = f"{home}  {sc['home']}–{sc['away']}  {away}  —  Key Stats"
+    fig.suptitle(title, color=TEXT, fontsize=T_TITLE, fontweight="bold", y=0.95)
+    _brand(fig, handle)
+
+    path = output_dir / _match_key(match) / "milestone_card.png"
+    return _save(fig, path)
